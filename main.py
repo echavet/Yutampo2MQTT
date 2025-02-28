@@ -27,7 +27,7 @@ def log_startup_message():
     msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
     border = "*" * (len(msg) + 4)
     framed_message = (
-        f"{Colors.BLUE}{border}{Colors.RESET}\n"
+        f"\n{Colors.BLUE}{border}{Colors.RESET}\n"
         f"{Colors.BLUE}* {Colors.GREEN}{msg}{Colors.BLUE} *{Colors.RESET}\n"
         f"{Colors.BLUE}{border}{Colors.RESET}"
     )
@@ -54,15 +54,27 @@ SCAN_INTERVAL = config.get("scan_interval", 300)
 BASE_URL = "https://www.csnetmanager.com"
 SESSION = requests.Session()
 
-# Récupération des informations du broker MQTT
+# Récupération des informations du broker MQTT avec logs de débogage
 MQTT_HOST = os.getenv('MQTT_HOST')
-MQTT_PORT = int(os.getenv('MQTT_PORT', 1883))
-MQTT_USER = os.getenv('MQTT_USERNAME')
-MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
+LOGGER.debug(f"Valeur de MQTT_HOST: '{MQTT_HOST}'")
 
+MQTT_PORT = os.getenv('MQTT_PORT', 1883)  # Note : valeur par défaut 1883, déjà converti en int plus tard
+LOGGER.debug(f"Valeur de MQTT_PORT: '{MQTT_PORT}'")
+
+MQTT_USER = os.getenv('MQTT_USERNAME')
+LOGGER.debug(f"Valeur de MQTT_USER: '{MQTT_USER}'")
+
+MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
+LOGGER.debug(f"Valeur de MQTT_PASSWORD: '{'*' * len(MQTT_PASSWORD) if MQTT_PASSWORD else 'None'}'")  # Masque le mot de passe
+
+# Vérification des variables
 if not all([MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD]):
-    LOGGER.error("Les informations du broker MQTT sont incomplètes.")
+    LOGGER.error("Les informations du broker MQTT sont incomplètes. Arrêt du programme.")
     exit(1)
+
+# Conversion explicite de MQTT_PORT en int après le log (car os.getenv retourne une string)
+MQTT_PORT = int(MQTT_PORT)
+LOGGER.debug(f"MQTT_PORT converti en int: {MQTT_PORT}")
 
 # Configuration du client MQTT
 mqtt_client = mqtt.Client()
