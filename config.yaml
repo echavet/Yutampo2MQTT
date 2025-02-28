@@ -19,3 +19,6 @@ schema:
   username: str
   password: password
   scan_interval: int
+map:
+  - addon_config:rw
+mqtt: true
