@@ -123,7 +123,7 @@ def publish_discovery_config(device_id, device_name):
         "temperature_state_topic": f"yutampo/climate/{device_id}/temperature_state",
         "min_temp": 30,
         "max_temp": 60,
-        "temp_step": 0.5,
+        "temp_step": 1,
         "device": {
             "identifiers": [device_id],
             "name": device_name,
