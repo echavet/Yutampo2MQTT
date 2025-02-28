@@ -3,15 +3,19 @@ FROM $BUILD_FROM
 
 ENV LANG C.UTF-8
 
-# Installation des dépendances
-RUN apk add --no-cache python3 py3-pip
+# Installation des dépendances Alpine
+RUN apk add --no-cache python3 py3-pip py3-requests py3-beautifulsoup4 py3-voluptuous
+
+# Création d'un environnement virtuel Python pour gérer les packages pip
+WORKDIR /app
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
 
 # Copie du code source
-WORKDIR /app
 COPY . /app
 
-# Installation des dépendances Python
-RUN pip3 install -r requirements.txt
+# Installation des dépendances Python dans l'environnement virtuel
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Exécution du script principal
-CMD ["python3", "/app/main.py"]
+CMD ["python", "/app/main.py"]
