@@ -9,6 +9,13 @@ from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime
 from bs4 import BeautifulSoup
 
+# Codes ANSI pour les couleurs
+class Colors:
+    GREEN = '\033[92m'
+    BLUE = '\033[94m'
+    RESET = '\033[0m'
+
+
 # Configuration du logging
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger("Yutampo_ha_addon")
@@ -154,7 +161,29 @@ def update_data():
     else:
         LOGGER.warning("Aucune donnée valide reçue lors de la mise à jour.")
 
+# Fonction pour créer un message encadré
+def log_startup_message():
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
+    border = "*" * (len(msg) + 4)
+    
+    # Message avec couleurs
+    framed_message = (
+        f"{Colors.BLUE}{border}{Colors.RESET}\n"
+        f"{Colors.BLUE}* {Colors.GREEN}{msg}{Colors.BLUE} *{Colors.RESET}\n"
+        f"{Colors.BLUE}{border}{Colors.RESET}"
+    )
+    
+    # Log du message (les couleurs peuvent ne pas s'afficher dans certains environnements)
+    LOGGER.info(framed_message)
+
+
 if __name__ == "__main__":
+
+    # Afficher le message de démarrage
+    log_startup_message()
+
+    
     if not authenticate():
         LOGGER.error("Impossible de s'authentifier. Arrêt de l'add-on.")
         exit(1)
