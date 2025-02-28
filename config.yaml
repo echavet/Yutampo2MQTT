@@ -1,0 +1,19 @@
+name: "Yutampo HA Addon"
+version: "1.0.0"
+slug: "yutampo_ha_addon"
+description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet"
+arch:
+  - amd64
+  - armv7
+  - aarch64
+init: false
+boot: "auto"
+homeassistant_api: true
+options:
+  username: "ton_username"
+  password: "ton_password"
+  scan_interval: 300
+schema:
+  username: str
+  password: str
+  scan_interval: int
