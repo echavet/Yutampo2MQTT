@@ -55,16 +55,16 @@ BASE_URL = "https://www.csnetmanager.com"
 SESSION = requests.Session()
 
 # Récupération des informations du broker MQTT avec logs de débogage
-MQTT_HOST = os.getenv('MQTT_HOST')
+MQTT_HOST = os.getenv('MQTTHOST')
 LOGGER.debug(f"Valeur de MQTT_HOST: '{MQTT_HOST}'")
 
-MQTT_PORT = os.getenv('MQTT_PORT', 1883)  # Note : valeur par défaut 1883, déjà converti en int plus tard
+MQTT_PORT = os.getenv('MQTTPORT', 1883)  # Note : valeur par défaut 1883, déjà converti en int plus tard
 LOGGER.debug(f"Valeur de MQTT_PORT: '{MQTT_PORT}'")
 
-MQTT_USER = os.getenv('MQTT_USERNAME')
+MQTT_USER = os.getenv('MQTTUSER')
 LOGGER.debug(f"Valeur de MQTT_USER: '{MQTT_USER}'")
 
-MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
+MQTT_PASSWORD = os.getenv('MQTTPASSWORD')
 LOGGER.debug(f"Valeur de MQTT_PASSWORD: '{'*' * len(MQTT_PASSWORD) if MQTT_PASSWORD else 'None'}'")  # Masque le mot de passe
 
 # Vérification des variables
