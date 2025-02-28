@@ -13,4 +13,5 @@ WORKDIR /app
 COPY . /app
 
 # Exécution du script principal
-CMD ["python3", "/app/main.py"]
+
+CMD [ "/app/run.sh" ]
