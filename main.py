@@ -136,18 +136,30 @@ def extract_csrf_token(html):
     return token["value"] if token else ""
 
 def get_device_status():
+    """Récupération des informations sur l'état des équipements."""
     LOGGER.debug("Récupération de l'état des appareils...")
     response = SESSION.get(f"{BASE_URL}/data/elements")
+    
     if response.status_code == 302:
         LOGGER.warning("Session expirée, réauthentification requise.")
         if authenticate():
+            LOGGER.debug("Réauthentification réussie, nouvelle tentative...")
             response = SESSION.get(f"{BASE_URL}/data/elements")
         else:
+            LOGGER.error("Échec de la réauthentification.")
             return None
-    if response.status_code == 200:
-        return response.json()
-    LOGGER.error(f"Échec de la requête API. Code HTTP: {response.status_code}")
-    return None
+    
+    if response.status_code != 200:
+        LOGGER.error(f"Échec de la requête API. Code HTTP: {response.status_code}, Contenu: {response.text[:200]}")
+        return None
+    
+    try:
+        device_data = response.json()
+        LOGGER.debug("Données récupérées avec succès.")
+        return device_data
+    except requests.exceptions.JSONDecodeError as e:
+        LOGGER.error(f"Erreur de parsing JSON : {str(e)}. Contenu reçu : {response.text[:200]}")
+        return None
 
 def publish_discovery_config(device_id, device_name):
     discovery_topic = f"homeassistant/climate/{device_id}/config"
