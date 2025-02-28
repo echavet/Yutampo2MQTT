@@ -1,5 +1,5 @@
 name: "Yutampo HA Addon"
-version: "1.1.4"
+version: "1.1.5"
 slug: "yutampo_ha_addon"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet"
 services:
