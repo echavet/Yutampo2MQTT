@@ -1,19 +1,18 @@
 #!/usr/bin/with-contenv bashio
 set -e
 
-echo "Lancement de l'add-on Yutampo..."
+bashio::log.info "Lancement de l'add-on Yutampo..."
 
 # Récupération des informations MQTT depuis l'intégration HA via bashio
-MQTT_HOST=$(bashio::services mqtt "host")
-MQTT_PORT=$(bashio::services mqtt "port")
-MQTT_USER=$(bashio::services mqtt "username")
-MQTT_PASSWORD=$(bashio::services mqtt "password")
 
-# Vérification que les valeurs sont bien récupérées
-if [ -z "$MQTT_HOST" ] || [ -z "$MQTT_PORT" ] || [ -z "$MQTT_USER" ] || [ -z "$MQTT_PASSWORD" ]; then
-    echo "Erreur : Impossible de récupérer les informations MQTT depuis Home Assistant."
-    echo "MQTT_HOST=$MQTT_HOST, MQTT_PORT=$MQTT_PORT, MQTT_USER=$MQTT_USER, MQTT_PASSWORD=[masked]"
-    exit 1
+if ! bashio::services.available "mqtt"; then
+    bashio::log.error "No internal MQTT service found"
+else
+    bashio::log.info "MQTT service found, fetching credentials ..."
+    MQTT_HOST=$(bashio::services mqtt "host")
+    MQTT_USER=$(bashio::services mqtt "username")
+    MQTT_PASSWORD=$(bashio::services mqtt "password")
+    MQTT_PORT=$(bashio::services mqtt "port")
 fi
 
 # Exportation des variables dans l'environnement
