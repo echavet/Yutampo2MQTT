@@ -12,6 +12,8 @@ WORKDIR /app
 # Copie du code source
 COPY . /app
 
+RUN chmod +x /app/run.sh
+
 # Exécution du script principal
 
 CMD [ "/app/run.sh" ]
