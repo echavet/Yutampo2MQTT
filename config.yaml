@@ -1,5 +1,5 @@
 name: "Yutampo HA Addon"
-version: "1.1.7"
+version: "1.1.8"
 slug: "yutampo_ha_addon"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet"
 services:
@@ -17,6 +17,11 @@ options:
   username: "ton_username"
   password: "ton_password"
   scan_interval: 300
+
+  mqtt_host: "<auto_detect>"
+  mqtt_port: "<auto_detect>"
+  mqtt_user: "<auto_detect>"
+  mqtt_password: "<auto_detect>"
 schema:
   username: str
   password: password
