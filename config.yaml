@@ -15,5 +15,5 @@ options:
   scan_interval: 300
 schema:
   username: str
-  password: str
+  password: password
   scan_interval: int
