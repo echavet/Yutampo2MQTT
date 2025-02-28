@@ -187,7 +187,7 @@ def publish_device_state(device_id, temperature, current_temperature, mode="heat
     mqtt_client.publish(f"yutampo/climate/{device_id}/temperature_state", temperature, retain=True)
     mqtt_client.publish(f"yutampo/climate/{device_id}/current_temperature", current_temperature, retain=True)
     mqtt_client.publish(f"yutampo/climate/{device_id}/mode", mode, retain=True)
-    LOGGER.info(f"État publié pour {device_id}: consigne={temperature}°C, actuel={current_temperature}°C")
+    LOGGER.debug(f"Publication MQTT pour {device_id}: mode={mode}, consigne={temperature}°C, actuel={current_temperature}°C")
 
 def update_data():
     LOGGER.info("Mise à jour des données...")
