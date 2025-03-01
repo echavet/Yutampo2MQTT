@@ -9,10 +9,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-DEVICES = (
-    {}
-)  # Stocke device_id -> {parentId, settingTemperature, currentTemperature, mode}
-CSRF_TOKEN = None  # Stocke le token CSRF globalement
+DEVICES = {}
+CSRF_TOKEN = None
 
 
 # Codes ANSI pour les couleurs
@@ -84,9 +82,7 @@ SESSION = requests.Session()
 MQTT_HOST = os.getenv("MQTTHOST")
 LOGGER.debug(f"Valeur de MQTT_HOST: '{MQTT_HOST}'")
 
-MQTT_PORT = os.getenv(
-    "MQTTPORT", 1883
-)  # Note : valeur par défaut 1883, déjà converti en int plus tard
+MQTT_PORT = os.getenv("MQTTPORT", 1883)
 LOGGER.debug(f"Valeur de MQTT_PORT: '{MQTT_PORT}'")
 
 MQTT_USER = os.getenv("MQTTUSER")
@@ -95,7 +91,7 @@ LOGGER.debug(f"Valeur de MQTT_USER: '{MQTT_USER}'")
 MQTT_PASSWORD = os.getenv("MQTTPASSWORD")
 LOGGER.debug(
     f"Valeur de MQTT_PASSWORD: '{'*' * len(MQTT_PASSWORD) if MQTT_PASSWORD else 'None'}'"
-)  # Masque le mot de passe
+)
 
 # Vérification des variables
 if not all([MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD]):
@@ -104,7 +100,6 @@ if not all([MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD]):
     )
     exit(1)
 
-# Conversion explicite de MQTT_PORT en int après le log (car os.getenv retourne une string)
 MQTT_PORT = int(MQTT_PORT)
 LOGGER.debug(f"MQTT_PORT converti en int: {MQTT_PORT}")
 
@@ -117,106 +112,140 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         LOGGER.info("Connecté au broker MQTT")
         client.subscribe("yutampo/climate/+/set")
+        client.subscribe("yutampo/climate/+/mode/set")
     else:
         LOGGER.error(f"Échec de la connexion au broker MQTT, code de retour : {rc}")
 
 
-def on_message(client, userdata, msg):
+def send_control_request(device_id, parent_id, new_temp=None, new_mode=None):
+    """Envoie une requête POST pour contrôler le chauffe-eau."""
     try:
-        LOGGER.info(f"Message reçu sur le topic {msg.topic}: {msg.payload.decode()}")
-        device_id = msg.topic.split("/")[2]  # Ex. yutampo/climate/4103/set
-        new_temp = float(msg.payload.decode())
-
-        if not (30 <= new_temp <= 60):
-            LOGGER.warning(
-                f"Température demandée {new_temp} hors plage (30-60°C). Ignorée."
-            )
-            return
-
-        if device_id not in DEVICES:
-            LOGGER.error(f"Device {device_id} inconnu dans DEVICES.")
-            return
-
         if not CSRF_TOKEN:
             LOGGER.warning("Token CSRF non disponible, tentative de récupération...")
             if not authenticate():
                 LOGGER.error("Échec récupération token CSRF via authentification.")
-                return
+                return False
 
-        # Récupérer parentId et le dernier état
-        parent_id = DEVICES[device_id]["parentId"]
+        if not fetch_csrf_token():
+            LOGGER.error("Échec récupération token CSRF avant POST.")
+            return False
+
         current_mode = DEVICES[device_id]["mode"]
+        current_temp = DEVICES[device_id]["settingTemperature"]
 
-        # Construire le payload pour URLEncoded
+        if new_temp is None:
+            new_temp = current_temp
+        if new_mode is None:
+            new_mode = current_mode
+
         payload = {
             "indoorId": str(parent_id),
             "settingTempDHW": str(new_temp),
-            "runStopDHW": "1" if current_mode == "heat" else "0",
             "_csrf": CSRF_TOKEN,
         }
+        # Ajouter runStopDHW uniquement si le serveur l'attend
+        payload["runStopDHW"] = "1" if new_mode == "heat" else "0"
+
         LOGGER.debug(f"Envoi POST URLEncoded avec payload : {payload}")
 
-        response = SESSION.post(f"{BASE_URL}/data/indoor/heat_setting", data=payload)
+        headers = {
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0",
+            "accept": "*/*",
+            "accept-language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
+            "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "x-requested-with": "XMLHttpRequest",
+            "origin": "https://www.csnetmanager.com",
+        }
+
+        response = SESSION.post(
+            f"{BASE_URL}/data/indoor/heat_setting", data=payload, headers=headers
+        )
 
         if response.status_code == 200:
             try:
                 resp_json = response.json()
                 if resp_json.get("status") == "success":
                     LOGGER.info(
-                        f"Température mise à jour pour {device_id} à {new_temp}°C"
+                        f"Commande exécutée pour {device_id}: temp={new_temp}°C, mode={new_mode}"
                     )
-                    # Mettre à jour DEVICES et republier
-                    DEVICES[device_id]["settingTemperature"] = new_temp
-                    publish_device_state(
-                        device_id,
-                        new_temp,
-                        DEVICES[device_id]["currentTemperature"],
-                        current_mode,
-                    )
+                    return True
                 else:
                     LOGGER.error(f"Réponse API non réussie : {resp_json}")
+                    return False
             except requests.exceptions.JSONDecodeError:
                 LOGGER.error(f"Réponse non JSON : {response.text[:200]}")
-        elif response.status_code == 302:
-            LOGGER.warning("Session expirée, réauthentification requise.")
-            if authenticate():  # Cela mettra à jour CSRF_TOKEN
-                response = SESSION.post(
-                    f"{BASE_URL}/data/indoor/heat_setting", data=payload
-                )
-                if response.status_code == 200:
-                    try:
-                        resp_json = response.json()
-                        if resp_json.get("status") == "success":
-                            LOGGER.info(
-                                f"Température mise à jour après réauth pour {device_id} à {new_temp}°C"
-                            )
-                            DEVICES[device_id]["settingTemperature"] = new_temp
-                            publish_device_state(
-                                device_id,
-                                new_temp,
-                                DEVICES[device_id]["currentTemperature"],
-                                current_mode,
-                            )
-                        else:
-                            LOGGER.error(
-                                f"Réponse API non réussie après réauth : {resp_json}"
-                            )
-                    except requests.exceptions.JSONDecodeError:
-                        LOGGER.error(
-                            f"Réponse non JSON après réauth : {response.text[:200]}"
-                        )
-                else:
-                    LOGGER.error(
-                        f"Échec après réauth. Code: {response.status_code}, Réponse: {response.text[:200]}"
-                    )
+                return False
+        elif response.status_code in (302, 403):
+            LOGGER.warning(
+                f"Erreur {response.status_code}, réauthentification requise..."
+            )
+            if authenticate():
+                return send_control_request(device_id, parent_id, new_temp, new_mode)
             else:
                 LOGGER.error("Échec de la réauthentification.")
+                return False
         else:
             LOGGER.error(
                 f"Échec mise à jour. Code: {response.status_code}, Réponse: {response.text[:200]}"
             )
+            return False
+    except Exception as e:
+        LOGGER.error(f"Erreur lors de l'envoi de la requête POST : {str(e)}")
+        return False
+
+
+def on_message(client, userdata, msg):
+    try:
+        LOGGER.info(f"Message reçu sur le topic {msg.topic}: {msg.payload.decode()}")
+        device_id = msg.topic.split("/")[2]
+
+        if device_id not in DEVICES:
+            LOGGER.error(f"Device {device_id} inconnu dans DEVICES.")
+            return
+
+        parent_id = DEVICES[device_id]["parentId"]
+        current_mode = DEVICES[device_id]["mode"]
+        current_temp = DEVICES[device_id]["settingTemperature"]
+
+        if msg.topic.endswith("/set"):  # Commande de température
+            new_temp = float(msg.payload.decode())
+            if not (30 <= new_temp <= 60):
+                LOGGER.warning(
+                    f"Température demandée {new_temp} hors plage (30-60°C). Ignorée."
+                )
+                return
+            if send_control_request(
+                device_id, parent_id, new_temp=new_temp, new_mode=None
+            ):
+                DEVICES[device_id]["settingTemperature"] = new_temp
+                publish_device_state(
+                    device_id,
+                    new_temp,
+                    DEVICES[device_id]["currentTemperature"],
+                    current_mode,
+                )
+
+        elif msg.topic.endswith("/mode/set"):  # Commande d'état
+            new_mode = msg.payload.decode()
+            if new_mode not in ("heat", "off"):
+                LOGGER.warning(
+                    f"Mode invalide : {new_mode}. Doit être 'heat' ou 'off'."
+                )
+                return
+            if send_control_request(
+                device_id, parent_id, new_temp=None, new_mode=new_mode
+            ):
+                DEVICES[device_id]["mode"] = new_mode
+                publish_device_state(
+                    device_id,
+                    current_temp,
+                    DEVICES[device_id]["currentTemperature"],
+                    new_mode,
+                )
     except ValueError:
-        LOGGER.error(f"Payload invalide : {msg.payload.decode()}. Doit être un nombre.")
+        LOGGER.error(
+            f"Payload invalide : {msg.payload.decode()}. Doit être un nombre ou mode valide."
+        )
     except Exception as e:
         LOGGER.error(f"Erreur dans on_message : {str(e)}")
 
@@ -224,7 +253,6 @@ def on_message(client, userdata, msg):
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
 
-# Connexion au broker MQTT
 mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
 mqtt_client.loop_start()
 
@@ -232,8 +260,6 @@ mqtt_client.loop_start()
 def authenticate():
     """Authentification et création de session."""
     LOGGER.info("Tentative d'authentification...")
-
-    # Récupérer un nouveau token CSRF
     if not fetch_csrf_token():
         LOGGER.error("Échec récupération token CSRF.")
         return False
@@ -260,13 +286,12 @@ def extract_csrf_token(html):
 
 
 def get_device_status():
-    """Récupération des informations sur l'état des équipements."""
     LOGGER.debug("Récupération de l'état des appareils...")
     response = SESSION.get(f"{BASE_URL}/data/elements")
 
     if response.status_code == 302:
         LOGGER.warning("Session expirée, réauthentification requise.")
-        if authenticate():  # Cela mettra à jour CSRF_TOKEN
+        if authenticate():
             response = SESSION.get(f"{BASE_URL}/data/elements")
         else:
             LOGGER.error("Échec de la réauthentification.")
@@ -280,6 +305,9 @@ def get_device_status():
 
     try:
         device_data = response.json()
+        if not isinstance(device_data, dict) or "data" not in device_data:
+            LOGGER.error("Structure JSON inattendue dans la réponse.")
+            return None
         LOGGER.debug("Données récupérées avec succès.")
         return device_data
     except requests.exceptions.JSONDecodeError as e:
@@ -295,6 +323,8 @@ def publish_discovery_config(device_id, device_name):
         "name": device_name,
         "unique_id": device_id,
         "modes": ["off", "heat"],
+        "mode_state_topic": f"yutampo/climate/{device_id}/mode",
+        "mode_command_topic": f"yutampo/climate/{device_id}/mode/set",
         "current_temperature_topic": f"yutampo/climate/{device_id}/current_temperature",
         "temperature_command_topic": f"yutampo/climate/{device_id}/set",
         "temperature_state_topic": f"yutampo/climate/{device_id}/temperature_state",
@@ -336,24 +366,21 @@ def update_data():
             parent_id = element["parentId"]
             setting_temp = element["settingTemperature"]
             current_temp = element["currentTemperature"]
-            on_off = element.get("onOff", 0)
-            mode_field = element.get("mode", 0)
-            real_mode = element.get("realMode", 0)
-            operation_status = element.get("operationStatus", 0)
-            run_stop_dhw = element.get("runStopDHW", "N/A")  # Si disponible
+            on_off = element.get("onOff", "N/A")
+            mode_field = element.get("mode", "N/A")
+            real_mode = element.get("realMode", "N/A")
+            operation_status = element.get("operationStatus", "N/A")
+            run_stop_dhw = element.get("runStopDHW", "N/A")
 
-            # Log des champs potentiels pour l'état
             LOGGER.debug(
                 f"Device {device_id}: onOff={on_off}, mode={mode_field}, "
                 f"realMode={real_mode}, operationStatus={operation_status}, "
                 f"runStopDHW={run_stop_dhw}"
             )
 
-            # Déterminer le mode (à ajuster selon le bon champ après inspection des logs)
-            mode = "heat" if on_off == 1 else "off"  # TODO : Ajuster après vérification
+            mode = "heat" if on_off == 1 else "off"
             LOGGER.debug(f"Mode calculé pour {device_id}: {mode}")
 
-            # Mettre à jour les infos
             DEVICES[device_id] = {
                 "parentId": parent_id,
                 "settingTemperature": setting_temp,
@@ -386,10 +413,10 @@ if __name__ == "__main__":
         parent_id = element["parentId"]
         setting_temp = element["settingTemperature"]
         current_temp = element["currentTemperature"]
-        on_off = element.get("onOff", 0)
-        mode_field = element.get("mode", 0)
-        real_mode = element.get("realMode", 0)
-        operation_status = element.get("operationStatus", 0)
+        on_off = element.get("onOff", "N/A")
+        mode_field = element.get("mode", "N/A")
+        real_mode = element.get("realMode", "N/A")
+        operation_status = element.get("operationStatus", "N/A")
         run_stop_dhw = element.get("runStopDHW", "N/A")
 
         LOGGER.debug(
@@ -398,7 +425,7 @@ if __name__ == "__main__":
             f"runStopDHW={run_stop_dhw}"
         )
 
-        mode = "heat" if on_off == 1 else "off"  # TODO : Ajuster après vérification
+        mode = "heat" if on_off == 1 else "off"
         LOGGER.debug(f"Mode calculé pour {device_id}: {mode}")
 
         DEVICES[device_id] = {
