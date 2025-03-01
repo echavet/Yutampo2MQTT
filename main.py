@@ -9,6 +9,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime
 from bs4 import BeautifulSoup
 
+DEVICES = {}  # Stocke device_id -> {parentId, settingTemperature, currentTemperature, mode}
+
 # Codes ANSI pour les couleurs
 class Colors:
     GREEN = '\033[92m'
@@ -90,19 +92,68 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     try:
         LOGGER.info(f"Message reçu sur le topic {msg.topic}: {msg.payload.decode()}")
-        # Extraction de l'ID du device depuis le topic
-        device_id = msg.topic.split('/')[2]
+        device_id = msg.topic.split('/')[2]  # Ex. yutampo/climate/4103/set
         new_temp = float(msg.payload.decode())
+
+        if not (30 <= new_temp <= 60):
+            LOGGER.warning(f"Température demandée {new_temp} hors plage (30-60°C). Ignorée.")
+            return
+
+        if device_id not in DEVICES:
+            LOGGER.error(f"Device {device_id} inconnu dans DEVICES.")
+            return
+
+        # Récupérer parentId et le dernier état
+        parent_id = DEVICES[device_id]["parentId"]
+        current_mode = DEVICES[device_id]["mode"]
+
+        # Récupérer le token CSRF actuel
+        login_page = SESSION.get(f"{BASE_URL}/login")
+        csrf_token = extract_csrf_token(login_page.text)
+
+        # Construire la requête POST
+        payload = {
+            "indoorId": parent_id,
+            "settingTempDHW": new_temp,
+            "runStopDHW": 1 if current_mode == "heat" else 0,  # Garde l'état actuel
+            "_csrf": csrf_token
+            # "id", "updatedOn", "orderStatus" omis car probablement gérés par le serveur
+        }
+        LOGGER.debug(f"Envoi POST avec payload : {payload}")
         
-        # Ici vous devriez ajouter la logique pour envoyer la nouvelle température via l'API
-        # Par exemple :
-        # payload = {"deviceId": device_id, "settingTemperature": new_temp}
-        # SESSION.post(f"{BASE_URL}/api/set_temperature", json=payload)
+        response = SESSION.post(f"{BASE_URL}/data/indoor/heat_setting", json=payload)
         
-        # Pour l'instant, on met juste à jour l'état MQTT
-        mqtt_client.publish(f"yutampo/climate/{device_id}/temperature_state", new_temp, retain=True)
+        if response.status_code == 200:
+            try:
+                resp_json = response.json()
+                if resp_json.get("status") == "success":
+                    LOGGER.info(f"Température mise à jour pour {device_id} à {new_temp}°C")
+                    # Mettre à jour DEVICES et republier
+                    DEVICES[device_id]["settingTemperature"] = new_temp
+                    publish_device_state(device_id, new_temp, DEVICES[device_id]["currentTemperature"], current_mode)
+                else:
+                    LOGGER.error(f"Réponse API non réussie : {resp_json}")
+            except requests.exceptions.JSONDecodeError:
+                LOGGER.error(f"Réponse non JSON : {response.text[:200]}")
+        elif response.status_code == 302:
+            LOGGER.warning("Session expirée, réauthentification requise.")
+            if authenticate():
+                response = SESSION.post(f"{BASE_URL}/data/indoor/heat_setting", json=payload)
+                if response.status_code == 200 and response.json().get("status") == "success":
+                    LOGGER.info(f"Température mise à jour après réauth pour {device_id} à {new_temp}°C")
+                    DEVICES[device_id]["settingTemperature"] = new_temp
+                    publish_device_state(device_id, new_temp, DEVICES[device_id]["currentTemperature"], current_mode)
+                else:
+                    LOGGER.error(f"Échec après réauth. Code: {response.status_code}, Réponse: {response.text[:200]}")
+            else:
+                LOGGER.error("Échec de la réauthentification.")
+        else:
+            LOGGER.error(f"Échec mise à jour. Code: {response.status_code}, Réponse: {response.text[:200]}")
+    except ValueError:
+        LOGGER.error(f"Payload invalide : {msg.payload.decode()}. Doit être un nombre.")
     except Exception as e:
-        LOGGER.error(f"Erreur lors du traitement du message: {str(e)}")
+        LOGGER.error(f"Erreur dans on_message : {str(e)}")
+        
 
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
@@ -195,9 +246,20 @@ def update_data():
     if device_data and "data" in device_data and "elements" in device_data["data"]:
         for element in device_data["data"]["elements"]:
             device_id = str(element["deviceId"])
+            parent_id = element["parentId"]
             setting_temp = element["settingTemperature"]
             current_temp = element["currentTemperature"]
-            mode = "heat" if element["onOff"] == 1 else "off"
+            on_off = element.get("onOff", 0)
+            mode = "heat" if on_off == 1 else "off"  # À ajuster si nécessaire
+            
+            # Mettre à jour les infos
+            DEVICES[device_id] = {
+                "parentId": parent_id,
+                "settingTemperature": setting_temp,
+                "currentTemperature": current_temp,
+                "mode": mode
+            }
+            LOGGER.debug(f"Device {device_id} mis à jour : {DEVICES[device_id]}")
             
             publish_device_state(device_id, setting_temp, current_temp, mode)
     else:
@@ -219,20 +281,29 @@ if __name__ == "__main__":
 
     # Publication de la configuration pour chaque appareil trouvé
     for element in device_data["data"]["elements"]:
-        device_id = str(element["deviceId"])  # Converti en string pour MQTT
-        device_name = element["deviceName"]
-        publish_discovery_config(device_id, device_name)
-        # Publication initiale de l'état
-        publish_device_state(device_id, 
-                           element["settingTemperature"], 
-                           element["currentTemperature"],
-                           "heat" if element["onOff"] == 1 else "off")
+        device_id = str(element["deviceId"])
+        parent_id = element["parentId"]
+        setting_temp = element["settingTemperature"]
+        current_temp = element["currentTemperature"]
+        on_off = element.get("onOff", 0)
+        mode = "heat" if on_off == 1 else "off"
+        
+        # Mémoriser les infos
+        DEVICES[device_id] = {
+            "parentId": parent_id,
+            "settingTemperature": setting_temp,
+            "currentTemperature": current_temp,
+            "mode": mode
+        }
+        LOGGER.debug(f"Device {device_id} initialisé : {DEVICES[device_id]}")
+        
+        publish_discovery_config(device_id, element["deviceName"])
+        publish_device_state(device_id, setting_temp, current_temp, mode)
 
     # Initialiser le planificateur
     scheduler = BackgroundScheduler()
     scheduler.start()
 
-    # Planifier la tâche de mise à jour
     scheduler.add_job(
         update_data,
         trigger=IntervalTrigger(seconds=SCAN_INTERVAL),
@@ -242,7 +313,7 @@ if __name__ == "__main__":
     LOGGER.info("Le planificateur est en cours d'exécution. Appuyez sur Ctrl+C pour arrêter.")
     try:
         while True:
-            time.sleep(1)  # Plus léger que pass
+            time.sleep(1)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
         mqtt_client.loop_stop()
