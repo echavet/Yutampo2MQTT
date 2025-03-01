@@ -101,6 +101,7 @@ def on_connect(client, userdata, flags, rc):
         LOGGER.error(f"Échec de la connexion au broker MQTT, code de retour : {rc}")
 
 def send_control_request(device_id, parent_id, new_temp=None, new_mode=None):
+    """Envoie une requête POST pour contrôler le chauffe-eau."""
     try:
         if not CSRF_TOKEN:
             LOGGER.warning("Token CSRF non disponible, tentative de récupération...")
@@ -203,7 +204,7 @@ def on_message(client, userdata, msg):
                 return
             if send_control_request(device_id, parent_id, new_temp=None, new_mode=new_mode):
                 DEVICES[device_id]["mode"] = new_mode
-               _publish_device_state(device_id, current_temp, DEVICES[device_id]["currentTemperature"], new_mode)
+                publish_device_state(device_id, current_temp, DEVICES[device_id]["currentTemperature"], new_mode)
     except Exception as e:
         LOGGER.error(f"Erreur dans on_message : {str(e)}")
 
