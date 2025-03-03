@@ -199,7 +199,26 @@ def on_message(client, userdata, msg):
         current_mode = DEVICES[device_id]["mode"]
         current_temp = DEVICES[device_id]["settingTemperature"]
 
-        if msg.topic.endswith("/set"):  # Commande de température
+        # Traiter d'abord les commandes de mode
+        if msg.topic.endswith("/mode/set"):  # Commande d'état (ON/OFF)
+            new_mode = msg.payload.decode()
+            if new_mode not in ("heat", "off"):
+                LOGGER.warning(
+                    f"Mode invalide : {new_mode}. Doit être 'heat' ou 'off'."
+                )
+                return
+            if send_control_request(
+                device_id, parent_id, new_temp=None, new_mode=new_mode
+            ):
+                DEVICES[device_id]["mode"] = new_mode
+                publish_device_state(
+                    device_id,
+                    current_temp,
+                    DEVICES[device_id]["currentTemperature"],
+                    new_mode,
+                )
+        # Puis les commandes de température
+        elif msg.topic.endswith("/set"):  # Commande de température
             try:
                 new_temp = float(msg.payload.decode())
             except ValueError:
@@ -221,24 +240,6 @@ def on_message(client, userdata, msg):
                     new_temp,
                     DEVICES[device_id]["currentTemperature"],
                     current_mode,
-                )
-
-        elif msg.topic.endswith("/mode/set"):  # Commande d'état
-            new_mode = msg.payload.decode()
-            if new_mode not in ("heat", "off"):
-                LOGGER.warning(
-                    f"Mode invalide : {new_mode}. Doit être 'heat' ou 'off'."
-                )
-                return
-            if send_control_request(
-                device_id, parent_id, new_temp=None, new_mode=new_mode
-            ):
-                DEVICES[device_id]["mode"] = new_mode
-                publish_device_state(
-                    device_id,
-                    current_temp,
-                    DEVICES[device_id]["currentTemperature"],
-                    new_mode,
                 )
     except Exception as e:
         LOGGER.error(f"Erreur dans on_message : {str(e)}")
@@ -286,8 +287,11 @@ def get_device_status():
     LOGGER.debug("Récupération de l'état des appareils...")
     response = SESSION.get(f"{BASE_URL}/data/elements")
 
-    if response.status_code == 302:
-        LOGGER.warning("Session expirée, réauthentification requise.")
+    if response.status_code != 200:
+        LOGGER.warning(f"Code HTTP: {response.status_code}")
+        LOGGER.debug(f"Réponse: {response.text}")
+        LOGGER.debug("Session expirée? Réauthentification...")
+
         if authenticate():
             response = SESSION.get(f"{BASE_URL}/data/elements")
         else:
