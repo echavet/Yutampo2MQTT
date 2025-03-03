@@ -13,8 +13,24 @@ DEVICES = {}
 CSRF_TOKEN = None
 
 # Mapping des valeurs operationStatus aux libellés
+# Mapping des valeurs operationStatus aux états hvac_action standard pour HA
+OPERATION_STATUS_HVAC_ACTION = {
+    0: "idle",  # Inactif
+    1: "idle",  # "Froid - Pas de demande"
+    2: "off",  # "Froid - Thermo OFF"
+    3: "cooling",  # "Froid - En demande"
+    4: "idle",  # "Chaud - Pas de demande"
+    5: "off",  # "Chaud - Thermo OFF"
+    6: "heating",  # "Chaud - En demande"
+    7: "off",  # "ECS Arrêt"
+    8: "heating",  # "ECS Marche"
+    9: "off",  # "Piscine Arrêt"
+    10: "heating",  # "Piscine Marche"
+}
+
+# Mapping des valeurs operationStatus aux libellés personnalisés
 OPERATION_STATUS_LABELS = {
-    0: "Inactif",  # Ajout du libellé pour 0
+    0: "Inactif",
     1: "Froid - Pas de demande",
     2: "Froid - Thermo OFF",
     3: "Froid - En demande",
@@ -26,6 +42,34 @@ OPERATION_STATUS_LABELS = {
     9: "Piscine Arrêt",
     10: "Piscine Marche",
 }
+
+
+def publish_device_state(
+    device_id, temperature, current_temperature, mode="heat", operation_status=0
+):
+    mqtt_client.publish(
+        f"yutampo/climate/{device_id}/temperature_state", temperature, retain=True
+    )
+    mqtt_client.publish(
+        f"yutampo/climate/{device_id}/current_temperature",
+        current_temperature,
+        retain=True,
+    )
+    mqtt_client.publish(f"yutampo/climate/{device_id}/mode", mode, retain=True)
+    # Publier hvac_action avec une valeur standardisée pour HA
+    hvac_action = OPERATION_STATUS_HVAC_ACTION.get(operation_status, "idle")
+    mqtt_client.publish(
+        f"yutampo/climate/{device_id}/hvac_action", hvac_action, retain=True
+    )
+    # Publier le libellé personnalisé dans un topic séparé
+    operation_label = OPERATION_STATUS_LABELS.get(operation_status, "Inconnu")
+    mqtt_client.publish(
+        f"yutampo/climate/{device_id}/operation_label", operation_label, retain=True
+    )
+    LOGGER.debug(
+        f"Publication MQTT pour {device_id}: mode={mode}, consigne={temperature}°C, "
+        f"actuel={current_temperature}°C, hvac_action={hvac_action}, operation_label={operation_label}"
+    )
 
 
 # Codes ANSI pour les couleurs
