@@ -12,6 +12,21 @@ from bs4 import BeautifulSoup
 DEVICES = {}
 CSRF_TOKEN = None
 
+# Mapping des valeurs operationStatus aux libellés
+OPERATION_STATUS_LABELS = {
+    0: "Inactif",  # Ajout du libellé pour 0
+    1: "Froid - Pas de demande",
+    2: "Froid - Thermo OFF",
+    3: "Froid - En demande",
+    4: "Chaud - Pas de demande",
+    5: "Chaud - Thermo OFF",
+    6: "Chaud - En demande",
+    7: "ECS Arrêt",
+    8: "ECS Marche",
+    9: "Piscine Arrêt",
+    10: "Piscine Marche",
+}
+
 
 # Codes ANSI pour les couleurs
 class Colors:
@@ -216,6 +231,7 @@ def on_message(client, userdata, msg):
                     current_temp,
                     DEVICES[device_id]["currentTemperature"],
                     new_mode,
+                    DEVICES[device_id]["operationStatus"],
                 )
         # Puis les commandes de température
         elif msg.topic.endswith("/set"):  # Commande de température
@@ -240,6 +256,7 @@ def on_message(client, userdata, msg):
                     new_temp,
                     DEVICES[device_id]["currentTemperature"],
                     current_mode,
+                    DEVICES[device_id]["operationStatus"],
                 )
     except Exception as e:
         LOGGER.error(f"Erreur dans on_message : {str(e)}")
@@ -329,6 +346,7 @@ def publish_discovery_config(device_id, device_name):
         "current_temperature_topic": f"yutampo/climate/{device_id}/current_temperature",
         "temperature_command_topic": f"yutampo/climate/{device_id}/set",
         "temperature_state_topic": f"yutampo/climate/{device_id}/temperature_state",
+        "action_topic": f"yutampo/climate/{device_id}/hvac_action",  # Ajout pour operationStatus
         "min_temp": 30,
         "max_temp": 60,
         "temp_step": 1,
@@ -343,7 +361,9 @@ def publish_discovery_config(device_id, device_name):
     LOGGER.info(f"Configuration MQTT Discovery publiée pour l'appareil {device_name}")
 
 
-def publish_device_state(device_id, temperature, current_temperature, mode="heat"):
+def publish_device_state(
+    device_id, temperature, current_temperature, mode="heat", operation_status=0
+):
     mqtt_client.publish(
         f"yutampo/climate/{device_id}/temperature_state", temperature, retain=True
     )
@@ -353,8 +373,14 @@ def publish_device_state(device_id, temperature, current_temperature, mode="heat
         retain=True,
     )
     mqtt_client.publish(f"yutampo/climate/{device_id}/mode", mode, retain=True)
+    # Traduire operationStatus en libellé
+    operation_label = OPERATION_STATUS_LABELS.get(operation_status, "Inconnu")
+    mqtt_client.publish(
+        f"yutampo/climate/{device_id}/hvac_action", operation_label, retain=True
+    )
     LOGGER.debug(
-        f"Publication MQTT pour {device_id}: mode={mode}, consigne={temperature}°C, actuel={current_temperature}°C"
+        f"Publication MQTT pour {device_id}: mode={mode}, consigne={temperature}°C, "
+        f"actuel={current_temperature}°C, operation_status={operation_label}"
     )
 
 
@@ -370,7 +396,7 @@ def update_data():
             on_off = element.get("onOff", "N/A")
             mode_field = element.get("mode", "N/A")
             real_mode = element.get("realMode", "N/A")
-            operation_status = element.get("operationStatus", "N/A")
+            operation_status = element.get("operationStatus", 0)
             run_stop_dhw = element.get("runStopDHW", "N/A")
 
             LOGGER.debug(
@@ -387,10 +413,13 @@ def update_data():
                 "settingTemperature": setting_temp,
                 "currentTemperature": current_temp,
                 "mode": mode,
+                "operationStatus": operation_status,
             }
             LOGGER.debug(f"Device {device_id} mis à jour : {DEVICES[device_id]}")
 
-            publish_device_state(device_id, setting_temp, current_temp, mode)
+            publish_device_state(
+                device_id, setting_temp, current_temp, mode, operation_status
+            )
     else:
         LOGGER.warning("Aucune donnée valide reçue lors de la mise à jour.")
 
@@ -417,7 +446,7 @@ if __name__ == "__main__":
         on_off = element.get("onOff", "N/A")
         mode_field = element.get("mode", "N/A")
         real_mode = element.get("realMode", "N/A")
-        operation_status = element.get("operationStatus", "N/A")
+        operation_status = element.get("operationStatus", 0)
         run_stop_dhw = element.get("runStopDHW", "N/A")
 
         LOGGER.debug(
@@ -434,11 +463,14 @@ if __name__ == "__main__":
             "settingTemperature": setting_temp,
             "currentTemperature": current_temp,
             "mode": mode,
+            "operationStatus": operation_status,
         }
         LOGGER.debug(f"Device {device_id} initialisé : {DEVICES[device_id]}")
 
         publish_discovery_config(device_id, element["deviceName"])
-        publish_device_state(device_id, setting_temp, current_temp, mode)
+        publish_device_state(
+            device_id, setting_temp, current_temp, mode, operation_status
+        )
 
     scheduler = BackgroundScheduler()
     scheduler.start()
