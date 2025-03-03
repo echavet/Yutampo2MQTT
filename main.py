@@ -126,22 +126,15 @@ def send_control_request(device_id, parent_id, new_temp=None, new_mode=None):
             LOGGER.error("Échec récupération token CSRF avant POST.")
             return False
 
-        current_mode = DEVICES[device_id]["mode"]
-        current_temp = DEVICES[device_id]["settingTemperature"]
-
-        if new_temp is None:
-            new_temp = current_temp
-        if new_mode is None:
-            new_mode = current_mode
-
-        # Payload aligné avec l'application officielle
         payload = {
             "indoorId": str(parent_id),
-            "settingTempDHW": str(new_temp),
-            "_csrf": CSRF_TOKEN,  # Gardons _csrf pour l'instant, mais testons avec XSRF-TOKEN si nécessaire
+            "_csrf": CSRF_TOKEN,
         }
+        # Inclure settingTempDHW uniquement si new_temp est fourni
+        if new_temp is not None:
+            payload["settingTempDHW"] = str(int(new_temp))  # Convertir en entier
         # Inclure runStopDHW uniquement pour les commandes ON/OFF
-        if new_mode != current_mode:
+        if new_mode is not None:
             payload["runStopDHW"] = "1" if new_mode == "heat" else "0"
 
         LOGGER.debug(f"Envoi POST URLEncoded avec payload : {payload}")
@@ -165,7 +158,7 @@ def send_control_request(device_id, parent_id, new_temp=None, new_mode=None):
                 resp_json = response.json()
                 if resp_json.get("status") == "success":
                     LOGGER.info(
-                        f"Commande exécutée pour {device_id}: temp={new_temp}°C, mode={new_mode}"
+                        f"Commande exécutée pour {device_id}: temp={new_temp if new_temp is not None else 'unchanged'}, mode={new_mode if new_mode is not None else 'unchanged'}"
                     )
                     return True
                 else:
@@ -206,26 +199,7 @@ def on_message(client, userdata, msg):
         current_mode = DEVICES[device_id]["mode"]
         current_temp = DEVICES[device_id]["settingTemperature"]
 
-        # Traiter d'abord les commandes de mode
-        if msg.topic.endswith("/mode/set"):  # Commande d'état (ON/OFF)
-            new_mode = msg.payload.decode()
-            if new_mode not in ("heat", "off"):
-                LOGGER.warning(
-                    f"Mode invalide : {new_mode}. Doit être 'heat' ou 'off'."
-                )
-                return
-            if send_control_request(
-                device_id, parent_id, new_temp=None, new_mode=new_mode
-            ):
-                DEVICES[device_id]["mode"] = new_mode
-                publish_device_state(
-                    device_id,
-                    current_temp,
-                    DEVICES[device_id]["currentTemperature"],
-                    new_mode,
-                )
-        # Puis les commandes de température
-        elif msg.topic.endswith("/set"):  # Commande de température
+        if msg.topic.endswith("/set"):  # Commande de température
             try:
                 new_temp = float(msg.payload.decode())
             except ValueError:
@@ -247,6 +221,24 @@ def on_message(client, userdata, msg):
                     new_temp,
                     DEVICES[device_id]["currentTemperature"],
                     current_mode,
+                )
+
+        elif msg.topic.endswith("/mode/set"):  # Commande d'état
+            new_mode = msg.payload.decode()
+            if new_mode not in ("heat", "off"):
+                LOGGER.warning(
+                    f"Mode invalide : {new_mode}. Doit être 'heat' ou 'off'."
+                )
+                return
+            if send_control_request(
+                device_id, parent_id, new_temp=None, new_mode=new_mode
+            ):
+                DEVICES[device_id]["mode"] = new_mode
+                publish_device_state(
+                    device_id,
+                    current_temp,
+                    DEVICES[device_id]["currentTemperature"],
+                    new_mode,
                 )
     except Exception as e:
         LOGGER.error(f"Erreur dans on_message : {str(e)}")
@@ -275,7 +267,6 @@ def authenticate():
     response = SESSION.post(f"{BASE_URL}/login", data=data)
     if response.status_code == 200 or response.status_code == 302:
         LOGGER.info("Authentification réussie.")
-        # Suivre la redirection pour récupérer le cookie XSRF-TOKEN
         if response.status_code == 302:
             redirect_url = response.headers.get("Location", f"{BASE_URL}/")
             response = SESSION.get(redirect_url)
@@ -295,11 +286,8 @@ def get_device_status():
     LOGGER.debug("Récupération de l'état des appareils...")
     response = SESSION.get(f"{BASE_URL}/data/elements")
 
-    if response.status_code != 200:
-        LOGGER.warning(f"Code HTTP: {response.status_code}")
-        LOGGER.debug(f"Réponse: {response.text}")
-        LOGGER.debug("Session expirée? Réauthentification...")
-
+    if response.status_code == 302:
+        LOGGER.warning("Session expirée, réauthentification requise.")
         if authenticate():
             response = SESSION.get(f"{BASE_URL}/data/elements")
         else:
@@ -387,7 +375,6 @@ def update_data():
                 f"runStopDHW={run_stop_dhw}"
             )
 
-            # Utiliser onOff pour déterminer l'état
             mode = "heat" if on_off == 1 else "off"
             LOGGER.debug(f"Mode calculé pour {device_id}: {mode}")
 
