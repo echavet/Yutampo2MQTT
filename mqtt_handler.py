@@ -9,11 +9,30 @@ class MqttHandler:
         self.client = mqtt.Client()
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
-        self.client.username_pw_set(config["mqtt_user"], config["mqtt_password"])
         self.mqtt_host = config["mqtt_host"]
         self.mqtt_port = config["mqtt_port"]
-        self.client.connect(self.mqtt_host, self.mqtt_port, 60)
-        self.client.loop_start()
+        self.mqtt_user = config["mqtt_user"]
+        self.mqtt_password = config["mqtt_password"]
+
+        # Logs pour déboguer
+        self.logger.debug(f"Initialisation MqttHandler avec host={self.mqtt_host}, port={self.mqtt_port}, user={self.mqtt_user}")
+
+        # Configuration des identifiants, mais pas de connexion immédiate
+        self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
+
+    def connect(self):
+        """Établit la connexion au broker MQTT"""
+        if not self.mqtt_host:
+            self.logger.error("MQTT host non défini. Impossible de se connecter.")
+            raise ValueError("MQTT host cannot be empty or None")
+
+        self.logger.info(f"Tentative de connexion au broker MQTT : {self.mqtt_host}:{self.mqtt_port}")
+        try:
+            self.client.connect(self.mqtt_host, self.mqtt_port, 60)
+            self.client.loop_start()
+        except Exception as e:
+            self.logger.error(f"Échec de la connexion au broker MQTT : {str(e)}")
+            raise
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -40,7 +59,7 @@ class MqttHandler:
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
             "temperature_state_topic": f"yutampo/climate/{device.id}/temperature_state",
-            "action_topic": f"yutampo/climate/{device.id}/action",  # Ajout de l'action_topic
+            "action_topic": f"yutampo/climate/{device.id}/action",
             "min_temp": 30,
             "max_temp": 60,
             "temp_step": 0.5,
@@ -54,7 +73,6 @@ class MqttHandler:
         }
         self.client.publish(discovery_topic, json.dumps(payload), retain=True)
         self.logger.info(f"Configuration MQTT Discovery publiée pour l'appareil {device.name}")
-        # Publier immédiatement l'état online
         self.publish_availability(device.id, "online")
 
     def publish_state(self, device_id, temperature=None, current_temperature=None, mode=None, action=None):
@@ -69,7 +87,6 @@ class MqttHandler:
         self.logger.info(f"État publié pour {device_id}: consigne={temperature}, actuel={current_temperature}, mode={mode}, action={action}")
 
     def publish_availability(self, device_id, state):
-        """Publier l'état de disponibilité (online/offline)"""
         self.client.publish(f"yutampo/climate/{device_id}/availability", state, retain=True)
         self.logger.debug(f"Disponibilité publiée pour {device_id}: {state}")
 
