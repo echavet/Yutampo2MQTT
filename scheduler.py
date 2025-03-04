@@ -3,6 +3,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime
 import logging
+from device import Device
 
 class Scheduler:
     def __init__(self, api_client, mqtt_handler):
@@ -23,8 +24,8 @@ class Scheduler:
 
     def _update_data(self):
         self.logger.info("Mise à jour des données...")
-        device_data = self.api_client.get_devices()
-        if not device_data:
+        raw_data = self.api_client.get_raw_data()
+        if not raw_data or "data" not in raw_data or "elements" not in raw_data["data"]:
             self.logger.warning("Échec de la récupération des données.")
             for device in self.devices:
                 device.set_unavailable(self.mqtt_handler)
@@ -32,8 +33,8 @@ class Scheduler:
 
         # Mettre à jour chaque appareil avec les nouvelles données
         device_map = {device.id: device for device in self.devices}
-        for element in device_data:
-            device_id = str(element.id)
+        for element in raw_data["data"]["elements"]:
+            device_id = str(element["deviceId"])
             if device_id in device_map:
                 device = device_map[device_id]
                 device.update_state(self.mqtt_handler, element)
