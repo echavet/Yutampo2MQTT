@@ -40,6 +40,7 @@ class MqttHandler:
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
             "temperature_state_topic": f"yutampo/climate/{device.id}/temperature_state",
+            "action_topic": f"yutampo/climate/{device.id}/action",  # Ajout de l'action_topic
             "min_temp": 30,
             "max_temp": 60,
             "temp_step": 0.5,
@@ -56,14 +57,16 @@ class MqttHandler:
         # Publier immédiatement l'état online
         self.publish_availability(device.id, "online")
 
-    def publish_state(self, device_id, temperature=None, current_temperature=None, mode=None):
+    def publish_state(self, device_id, temperature=None, current_temperature=None, mode=None, action=None):
         if temperature is not None:
             self.client.publish(f"yutampo/climate/{device_id}/temperature_state", temperature, retain=True)
         if current_temperature is not None:
             self.client.publish(f"yutampo/climate/{device_id}/current_temperature", current_temperature, retain=True)
         if mode is not None:
             self.client.publish(f"yutampo/climate/{device_id}/mode", mode, retain=True)
-        self.logger.info(f"État publié pour {device_id}: consigne={temperature}, actuel={current_temperature}, mode={mode}")
+        if action is not None:
+            self.client.publish(f"yutampo/climate/{device_id}/action", action, retain=True)
+        self.logger.info(f"État publié pour {device_id}: consigne={temperature}, actuel={current_temperature}, mode={mode}, action={action}")
 
     def publish_availability(self, device_id, state):
         """Publier l'état de disponibilité (online/offline)"""
