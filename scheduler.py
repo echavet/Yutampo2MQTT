@@ -31,7 +31,6 @@ class Scheduler:
                 device.set_unavailable(self.mqtt_handler)
             return
 
-        # Mettre à jour chaque appareil avec les nouvelles données
         device_map = {device.id: device for device in self.devices}
         for element in raw_data["data"]["elements"]:
             device_id = str(element["deviceId"])
