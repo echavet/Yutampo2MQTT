@@ -4,7 +4,7 @@ import json
 import logging
 
 class MqttHandler:
-    def __init__(self, config):
+    def __init__(self, config, api_client=None):
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.client = mqtt.Client()
         self.client.on_connect = self._on_connect
@@ -13,6 +13,7 @@ class MqttHandler:
         self.mqtt_port = config["mqtt_port"]
         self.mqtt_user = config["mqtt_user"]
         self.mqtt_password = config["mqtt_password"]
+        self.api_client = api_client  # Référence à ApiClient pour envoyer des commandes
 
         # Logs pour déboguer
         self.logger.debug(f"Initialisation MqttHandler avec host={self.mqtt_host}, port={self.mqtt_port}, user={self.mqtt_user}")
@@ -47,22 +48,35 @@ class MqttHandler:
         self.logger.info(f"Message reçu sur le topic {msg.topic}: {msg.payload.decode()}")
         try:
             topic_parts = msg.topic.split('/')
-            device_id = topic_parts[2]
-            command_type = topic_parts[-1]
+            device_id = topic_parts[2]  # Extrait l'ID du device
+            command_part = topic_parts[3]  # "climate/{device_id}/[mode|set]"
 
             payload = msg.payload.decode()
 
-            if command_type == "set":  # Commande de température
-                new_temp = float(payload)  # Convertir en float pour les températures
-                self.publish_state(device_id, temperature=new_temp, current_temperature=None)
-            elif command_type == "mode":  # Commande de mode
+            if command_part == "mode" and topic_parts[-1] == "set":  # Commande de mode (yutampo/climate/+/mode/set)
                 new_mode = payload  # Pas de conversion en float, c'est une chaîne ("off", "heat")
                 if new_mode in ["off", "heat"]:
-                    self.publish_state(device_id, mode=new_mode)
-                    # Note : Si vous avez une API pour appliquer ce changement côté Yutampo, il faudrait l'appeler ici
-                    # Exemple : self.api_client.set_mode(device_id, new_mode)
+                    # Convertir le mode en runStopDHW pour l'API
+                    run_stop_dhw = 1 if new_mode == "heat" else 0
+                    # Note : indoorId doit être obtenu, ici on suppose qu'il est connu
+                    # Pour l'instant, on utilise un placeholder (4034 comme dans ton exemple)
+                    # Cela devra être corrigé avec la bonne logique pour obtenir indoorId
+                    indoor_id = "4034"  # TODO: Obtenir indoorId dynamiquement
+                    if self.api_client:
+                        success = self.api_client.set_heat_setting(indoor_id, run_stop_dhw)
+                        if success:
+                            self.publish_state(device_id, mode=new_mode)
+                        else:
+                            self.logger.error(f"Échec de l'application du mode {new_mode} via API")
+                    else:
+                        self.logger.warning("ApiClient non disponible, mode publié localement uniquement")
+                        self.publish_state(device_id, mode=new_mode)
                 else:
                     self.logger.warning(f"Mode non supporté reçu : {new_mode}")
+            elif command_part == "set":  # Commande de température (yutampo/climate/+/set)
+                new_temp = float(payload)  # Convertir en float pour les températures
+                self.publish_state(device_id, temperature=new_temp, current_temperature=None)
+                # Note : Si une API existe pour appliquer la température, on peut l'appeler ici
             else:
                 self.logger.warning(f"Type de commande inconnu reçu sur topic {msg.topic}: {payload}")
         except ValueError as ve:
