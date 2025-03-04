@@ -13,8 +13,8 @@ class MqttHandler:
         self.mqtt_port = config["mqtt_port"]
         self.mqtt_user = config["mqtt_user"]
         self.mqtt_password = config["mqtt_password"]
-        self.api_client = api_client  # Référence à ApiClient pour envoyer des commandes
-        self.devices = {}  # Stocke les appareils pour accès rapide dans on_message
+        self.api_client = api_client
+        self.devices = {}
 
         self.logger.debug(f"Initialisation MqttHandler avec host={self.mqtt_host}, port={self.mqtt_port}, user={self.mqtt_user}")
         self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
@@ -99,12 +99,13 @@ class MqttHandler:
             self.logger.error(f"Erreur lors du traitement du message: {str(e)}")
 
     def publish_discovery(self, device):
-        self.devices[device.id] = device  # Ajouter le device à la map
+        self.devices[device.id] = device
         discovery_topic = f"homeassistant/climate/{device.id}/config"
         payload = {
             "name": device.name,
             "unique_id": device.id,
             "modes": ["off", "heat"],
+            "state_topic": f"yutampo/climate/{device.id}/state",  # Ajout pour logbook
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
             "temperature_state_topic": f"yutampo/climate/{device.id}/temperature_state",
@@ -137,6 +138,16 @@ class MqttHandler:
             self.client.publish(f"yutampo/climate/{device_id}/hvac_action", action, retain=True)
         if operation_label is not None:
             self.client.publish(f"yutampo/climate/{device_id}/operation_label", operation_label, retain=True)
+
+        # Publier un état global sur state_topic pour le logbook
+        global_state = {
+            "mode": mode if mode is not None else "",
+            "temperature": temperature if temperature is not None else 0,
+            "current_temperature": current_temperature if current_temperature is not None else 0,
+            "action": action if action is not None else "",
+            "operation_label": operation_label if operation_label is not None else ""
+        }
+        self.client.publish(f"yutampo/climate/{device_id}/state", json.dumps(global_state), retain=True)
         self.logger.info(f"État publié pour {device_id}: consigne={temperature}, actuel={current_temperature}, mode={mode}, action={action}, operation_label={operation_label}")
 
     def publish_availability(self, device_id, state):
