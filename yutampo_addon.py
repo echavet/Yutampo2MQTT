@@ -10,8 +10,9 @@ class YutampoAddon:
     def __init__(self, config_path):
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.config = self._load_config(config_path)
+        self.logger.debug(f"Config chargée : {self.config}")
         self.api_client = ApiClient(self.config)
-        self.mqtt_handler = MqttHandler(self.config)
+        self.mqtt_handler = MqttHandler(self.config)  # Plus de connexion ici
         self.scheduler = Scheduler(self.api_client, self.mqtt_handler)
         self.devices = []
 
@@ -39,6 +40,9 @@ class YutampoAddon:
             exit(1)
 
         self.logger.info("Démarrage de l'addon...")
+        # Connexion MQTT ici, après vérifications (comme dans la version procédurale)
+        self.mqtt_handler.connect()
+
         # Authentification
         if not self.api_client.authenticate():
             self.logger.error("Impossible de s'authentifier. Arrêt de l'add-on.")
@@ -56,7 +60,7 @@ class YutampoAddon:
             device.register(self.mqtt_handler)
 
         # Lancer les mises à jour périodiques
-        self.scheduler.schedule_updates()
+        self.scheduler.schedule_updates(self.devices, self.config["scan_interval"])
 
         self.logger.info("Le planificateur est en cours d'exécution. Appuyez sur Ctrl+C pour arrêter.")
         try:
