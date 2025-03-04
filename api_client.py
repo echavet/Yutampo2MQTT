@@ -38,6 +38,12 @@ class ApiClient:
         return token["value"] if token else ""
 
     def get_devices(self):
+        raw_data = self.get_raw_data()
+        if not raw_data or "data" not in raw_data or "elements" not in raw_data["data"]:
+            return None
+        return [Device(str(element["deviceId"]), element["deviceName"]) for element in raw_data["data"]["elements"]]
+
+    def get_raw_data(self):
         self.logger.debug("Récupération de l'état des appareils...")
         response = self.session.get(f"{self.BASE_URL}/data/elements")
         if response.status_code == 302:
@@ -49,13 +55,8 @@ class ApiClient:
         if response.status_code != 200:
             self.logger.error(f"Échec de la requête API. Code HTTP: {response.status_code}")
             return None
-
         try:
-            data = response.json()
-            if "data" not in data or "elements" not in data["data"]:
-                self.logger.error("Structure des données inattendue.")
-                return None
-            return [Device(str(element["deviceId"]), element["deviceName"]) for element in data["data"]["elements"]]
+            return response.json()
         except Exception as e:
             self.logger.error(f"Erreur lors du parsing JSON: {str(e)}")
             return None
