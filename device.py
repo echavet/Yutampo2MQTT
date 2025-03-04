@@ -35,5 +35,4 @@ class Device:
     def set_unavailable(self, mqtt_handler):
         """Marque l'appareil comme indisponible"""
         mqtt_handler.publish_availability(self.id, "offline")
-        # On peut aussi publier une action "off" pour refléter l'état
         mqtt_handler.publish_state(self.id, action="off")
