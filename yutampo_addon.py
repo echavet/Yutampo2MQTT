@@ -13,7 +13,8 @@ class YutampoAddon:
         self.config = self._load_config(config_path)
         self.logger.debug(f"Config initiale : {self.config}")
         self.api_client = ApiClient(self.config)
-        self.mqtt_handler = MqttHandler(self.config)  # Pas de connexion ici
+        # Passer api_client à MqttHandler
+        self.mqtt_handler = MqttHandler(self.config, api_client=self.api_client)
         self.scheduler = Scheduler(self.api_client, self.mqtt_handler)
         self.devices = []
 
@@ -25,7 +26,7 @@ class YutampoAddon:
             config = json.load(config_file)
 
         # Récupérer les variables MQTT avec les noms utilisés dans run.sh
-        mqtt_host = os.getenv("MQTTHOST") or os.getenv("MQTT_HOST")  # Fallback pour compatibilité
+        mqtt_host = os.getenv("MQTTHOST") or os.getenv("MQTT_HOST")
         mqtt_port = os.getenv("MQTTPORT") or os.getenv("MQTT_PORT", "1883")
         mqtt_user = os.getenv("MQTTUSER") or os.getenv("MQTT_USERNAME")
         mqtt_password = os.getenv("MQTTPASSWORD") or os.getenv("MQTT_PASSWORD")
