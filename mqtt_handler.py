@@ -17,7 +17,7 @@ class MqttHandler:
         # Logs pour déboguer
         self.logger.debug(f"Initialisation MqttHandler avec host={self.mqtt_host}, port={self.mqtt_port}, user={self.mqtt_user}")
 
-        # Configuration des identifiants, mais pas de connexion immédiate
+        # Configuration des identifiants
         self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
 
     def connect(self):
@@ -37,16 +37,28 @@ class MqttHandler:
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.logger.info("Connecté au broker MQTT")
-            self.client.subscribe("yutampo/climate/+/set")
+            # S'abonner aux topics de commande
+            self.client.subscribe("yutampo/climate/+/set")  # Pour la température
+            self.client.subscribe("yutampo/climate/+/mode/set")  # Pour le mode
         else:
             self.logger.error(f"Échec de la connexion au broker MQTT, code de retour : {rc}")
 
     def _on_message(self, client, userdata, msg):
         self.logger.info(f"Message reçu sur le topic {msg.topic}: {msg.payload.decode()}")
         try:
-            device_id = msg.topic.split('/')[2]
-            new_temp = float(msg.payload.decode())
-            self.publish_state(device_id, temperature=new_temp, current_temperature=None)
+            topic_parts = msg.topic.split('/')
+            device_id = topic_parts[2]
+            command_type = topic_parts[-1]
+
+            if command_type == "set":  # Commande de température
+                new_temp = float(msg.payload.decode())
+                self.publish_state(device_id, temperature=new_temp, current_temperature=None)
+            elif command_type == "mode":  # Commande de mode
+                new_mode = msg.payload.decode()
+                if new_mode in ["off", "heat"]:
+                    self.publish_state(device_id, mode=new_mode)
+                else:
+                    self.logger.warning(f"Mode non supporté reçu : {new_mode}")
         except Exception as e:
             self.logger.error(f"Erreur lors du traitement du message: {str(e)}")
 
@@ -59,6 +71,8 @@ class MqttHandler:
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
             "temperature_state_topic": f"yutampo/climate/{device.id}/temperature_state",
+            "mode_state_topic": f"yutampo/climate/{device.id}/mode",  # Ajout pour l'état du mode
+            "mode_command_topic": f"yutampo/climate/{device.id}/mode/set",  # Ajout pour les commandes de mode
             "action_topic": f"yutampo/climate/{device.id}/action",
             "min_temp": 30,
             "max_temp": 60,
