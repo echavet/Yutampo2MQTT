@@ -50,15 +50,23 @@ class MqttHandler:
             device_id = topic_parts[2]
             command_type = topic_parts[-1]
 
+            payload = msg.payload.decode()
+
             if command_type == "set":  # Commande de température
-                new_temp = float(msg.payload.decode())
+                new_temp = float(payload)  # Convertir en float pour les températures
                 self.publish_state(device_id, temperature=new_temp, current_temperature=None)
             elif command_type == "mode":  # Commande de mode
-                new_mode = msg.payload.decode()
+                new_mode = payload  # Pas de conversion en float, c'est une chaîne ("off", "heat")
                 if new_mode in ["off", "heat"]:
                     self.publish_state(device_id, mode=new_mode)
+                    # Note : Si vous avez une API pour appliquer ce changement côté Yutampo, il faudrait l'appeler ici
+                    # Exemple : self.api_client.set_mode(device_id, new_mode)
                 else:
                     self.logger.warning(f"Mode non supporté reçu : {new_mode}")
+            else:
+                self.logger.warning(f"Type de commande inconnu reçu sur topic {msg.topic}: {payload}")
+        except ValueError as ve:
+            self.logger.error(f"Erreur lors de la conversion de la valeur: {str(ve)}")
         except Exception as e:
             self.logger.error(f"Erreur lors du traitement du message: {str(e)}")
 
@@ -71,8 +79,8 @@ class MqttHandler:
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
             "temperature_state_topic": f"yutampo/climate/{device.id}/temperature_state",
-            "mode_state_topic": f"yutampo/climate/{device.id}/mode",  # Ajout pour l'état du mode
-            "mode_command_topic": f"yutampo/climate/{device.id}/mode/set",  # Ajout pour les commandes de mode
+            "mode_state_topic": f"yutampo/climate/{device.id}/mode",
+            "mode_command_topic": f"yutampo/climate/{device.id}/mode/set",
             "action_topic": f"yutampo/climate/{device.id}/action",
             "min_temp": 30,
             "max_temp": 60,
