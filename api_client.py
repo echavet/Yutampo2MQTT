@@ -12,14 +12,15 @@ class ApiClient:
         self.session = requests.Session()
         self.username = config["username"]
         self.password = config["password"]
+        self.csrf_token = None  # Pour stocker le token CSRF après authentification
 
     def authenticate(self):
         self.logger.info("Tentative d'authentification...")
         login_page = self.session.get(f"{self.BASE_URL}/login")
-        csrf_token = self._extract_csrf_token(login_page.text)
+        self.csrf_token = self._extract_csrf_token(login_page.text)
 
         data = {
-            "_csrf": csrf_token,
+            "_csrf": self.csrf_token,
             "username": self.username,
             "password_unsanitized": self.password,
             "password": self.password
@@ -60,3 +61,32 @@ class ApiClient:
         except Exception as e:
             self.logger.error(f"Erreur lors du parsing JSON: {str(e)}")
             return None
+
+    def set_heat_setting(self, indoor_id, run_stop_dhw):
+        """Envoie une commande pour modifier l'état du chauffe-eau (on/off)."""
+        self.logger.info(f"Modification de l'état du chauffe-eau pour indoorId={indoor_id}, runStopDHW={run_stop_dhw}")
+        
+        # Vérifier que le token CSRF est disponible
+        if not self.csrf_token:
+            self.logger.warning("Token CSRF non disponible, tentative de réauthentification...")
+            if not self.authenticate():
+                self.logger.error("Échec de la réauthentification pour obtenir le token CSRF.")
+                return False
+
+        data = {
+            "indoorId": indoor_id,
+            "runStopDHW": run_stop_dhw,  # 0 pour off, 1 pour on
+            "_csrf": self.csrf_token
+        }
+
+        try:
+            response = self.session.post(f"{self.BASE_URL}/data/indoor/heat_setting", data=data)
+            if response.status_code == 200 or response.status_code == 302:  # 302 peut indiquer une redirection après succès
+                self.logger.info("Commande d'état envoyée avec succès.")
+                return True
+            else:
+                self.logger.error(f"Échec de la commande d'état. Code HTTP: {response.status_code}")
+                return False
+        except Exception as e:
+            self.logger.error(f"Erreur lors de l'envoi de la commande d'état: {str(e)}")
+            return False
