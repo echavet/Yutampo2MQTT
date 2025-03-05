@@ -6,7 +6,7 @@ class Device:
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.id = id
         self.name = name
-        self.parent_id = parent_id  # Ajout de parentId
+        self.parent_id = parent_id
         self.setting_temperature = None
         self.current_temperature = None
         self.mode = None
@@ -26,19 +26,18 @@ class Device:
         self.run_stop_dhw = state_data.get("runStopDHW", "N/A")
         self.mode = "heat" if state_data.get("onOff") == 1 else "off"
 
-        # Calcul de l'action basée sur operationStatus
         operation_status_map = {
-            0: "idle",  # Inactif
-            1: "idle",  # "Froid - Pas de demande"
-            2: "off",  # "Froid - Thermo OFF"
-            3: "cooling",  # "Froid - En demande"
-            4: "idle",  # "Chaud - Pas de demande"
-            5: "off",  # "Chaud - Thermo OFF"
-            6: "heating",  # "Chaud - En demande"
-            7: "off",  # "ECS Arrêt"
-            8: "heating",  # "ECS Marche"
-            9: "off",  # "Piscine Arrêt"
-            10: "heating",  # "Piscine Marche"
+            0: "idle",
+            1: "idle",
+            2: "off",
+            3: "cooling",
+            4: "idle",
+            5: "off",
+            6: "heating",
+            7: "off",
+            8: "heating",
+            9: "off",
+            10: "heating",
         }
         operation_label_map = {
             0: "Inactif",
@@ -59,6 +58,13 @@ class Device:
         mqtt_handler.publish_state(self.id, self.setting_temperature, self.current_temperature, self.mode, self.action, self.operation_label)
 
     def set_unavailable(self, mqtt_handler):
-        """Marque l'appareil comme indisponible"""
+        """Marque l'appareil comme indisponible mais conserve les dernières valeurs connues"""
         mqtt_handler.publish_availability(self.id, "offline")
-        mqtt_handler.publish_state(self.id, action="off")
+        mqtt_handler.publish_state(
+            self.id,
+            self.setting_temperature,
+            self.current_temperature,
+            self.mode,
+            "off",  # Action mise à "off" pour refléter l'indisponibilité
+            self.operation_label
+        )
