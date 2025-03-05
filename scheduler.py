@@ -12,9 +12,12 @@ class Scheduler:
         self.mqtt_handler = mqtt_handler
         self.scheduler = BackgroundScheduler()
         self.devices = []
+        self.failure_count = {}  # Compteur d'échecs par device
 
     def schedule_updates(self, devices, interval=300):
         self.devices = devices
+        for device in self.devices:
+            self.failure_count[device.id] = 0
         self.scheduler.add_job(
             self._update_data,
             trigger=IntervalTrigger(seconds=interval),
@@ -28,7 +31,10 @@ class Scheduler:
         if not raw_data or "data" not in raw_data or "elements" not in raw_data["data"]:
             self.logger.warning("Échec de la récupération des données.")
             for device in self.devices:
-                device.set_unavailable(self.mqtt_handler)
+                self.failure_count[device.id] = self.failure_count.get(device.id, 0) + 1
+                if self.failure_count[device.id] >= 3:  # Marquer offline après 3 échecs consécutifs
+                    device.set_unavailable(self.mqtt_handler)
+                self.logger.info(f"Échec pour {device.id}. Tentative {self.failure_count[device.id]}/3")
             return
 
         device_map = {device.id: device for device in self.devices}
@@ -38,6 +44,7 @@ class Scheduler:
                 device = device_map[device_id]
                 device.update_state(self.mqtt_handler, element)
                 self.mqtt_handler.publish_availability(device.id, "online")
+                self.failure_count[device.id] = 0  # Réinitialiser le compteur d'échecs
 
     def shutdown(self):
         self.scheduler.shutdown()
