@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from device import Device
 import logging
+import json
 
 class ApiClient:
     BASE_URL = "https://www.csnetmanager.com"
@@ -12,7 +13,7 @@ class ApiClient:
         self.session = requests.Session()
         self.username = config["username"]
         self.password = config["password"]
-        self.csrf_token = None  # Stocke le token CSRF
+        self.csrf_token = None
 
     def authenticate(self):
         self.logger.info("Tentative d'authentification...")
@@ -39,7 +40,6 @@ class ApiClient:
         return False
 
     def _fetch_csrf_token(self):
-        """Récupère un nouveau token CSRF depuis la page de login."""
         try:
             login_page = self.session.get(f"{self.BASE_URL}/login")
             if login_page.status_code != 200:
@@ -66,32 +66,57 @@ class ApiClient:
         raw_data = self.get_raw_data()
         if not raw_data or "data" not in raw_data or "elements" not in raw_data["data"]:
             return None
-        # Créer des objets Device avec parentId
         return [Device(str(element["deviceId"]), element["deviceName"], element["parentId"]) for element in raw_data["data"]["elements"]]
 
-    def get_raw_data(self):
-        self.logger.debug("Récupération de l'état des appareils...")
-        response = self.session.get(f"{self.BASE_URL}/data/elements")
-        if response.status_code == 302:
-            self.logger.warning("Session expirée, réauthentification requise.")
-            if self.authenticate():
+    def get_raw_data(self, max_retries=3):
+        attempt = 0
+        while attempt < max_retries:
+            attempt += 1
+            self.logger.debug(f"Tentative {attempt}/{max_retries} : Récupération de l'état des appareils...")
+            try:
                 response = self.session.get(f"{self.BASE_URL}/data/elements")
-            else:
-                return None
-        if response.status_code != 200:
-            self.logger.error(f"Échec de la requête API. Code HTTP: {response.status_code}")
-            return None
-        try:
-            return response.json()
-        except Exception as e:
-            self.logger.error(f"Erreur lors du parsing JSON: {str(e)}")
-            return None
+                if response.status_code == 302:
+                    self.logger.warning("Session expirée, réauthentification requise.")
+                    if self.authenticate():
+                        response = self.session.get(f"{self.BASE_URL}/data/elements")
+                    else:
+                        self.logger.error("Échec de la réauthentification.")
+                        return None
+
+                if response.status_code != 200:
+                    self.logger.error(f"Échec de la requête API. Code HTTP: {response.status_code}")
+                    continue
+
+                # Vérifier si la réponse est bien JSON avant de parser
+                try:
+                    content_type = response.headers.get("Content-Type", "")
+                    if "application/json" not in content_type:
+                        self.logger.error(f"Réponse inattendue (non JSON) : Content-Type={content_type}, Contenu={response.text[:200]}")
+                        if attempt == max_retries:
+                            return None
+                        continue
+
+                    data = response.json()
+                    if not isinstance(data, dict) or "data" not in data:
+                        self.logger.error("Structure JSON inattendue dans la réponse.")
+                        if attempt == max_retries:
+                            return None
+                        continue
+                    return data
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"Erreur lors du parsing JSON : {str(e)}. Contenu reçu : {response.text[:200]}")
+                    if attempt == max_retries:
+                        return None
+                    continue
+            except Exception as e:
+                self.logger.error(f"Erreur lors de la requête API : {str(e)}")
+                if attempt == max_retries:
+                    return None
+        return None
 
     def set_heat_setting(self, indoor_id, run_stop_dhw=None, setting_temp_dhw=None):
-        """Envoie une commande pour modifier l'état ou la température du chauffe-eau."""
         self.logger.info(f"Modification de l'état/temp pour indoorId={indoor_id}, runStopDHW={run_stop_dhw}, settingTempDHW={setting_temp_dhw}")
         
-        # Rafraîchir le token CSRF avant chaque POST
         if not self._fetch_csrf_token():
             self.logger.error("Échec récupération token CSRF avant POST.")
             return False
@@ -100,10 +125,8 @@ class ApiClient:
             "indoorId": str(indoor_id),
             "_csrf": self.csrf_token,
         }
-        # Inclure settingTempDHW uniquement si fourni
         if setting_temp_dhw is not None:
             payload["settingTempDHW"] = str(int(setting_temp_dhw))
-        # Inclure runStopDHW uniquement si fourni
         if run_stop_dhw is not None:
             payload["runStopDHW"] = str(run_stop_dhw)
 
