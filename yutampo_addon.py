@@ -32,10 +32,18 @@ class YutampoAddon:
         mqtt_user = os.getenv("MQTTUSER") or os.getenv("MQTT_USERNAME")
         mqtt_password = os.getenv("MQTTPASSWORD") or os.getenv("MQTT_PASSWORD")
 
+        # Récupérer scan_interval et s'assurer qu'il est >= 60 secondes
+        scan_interval = config.get("scan_interval", 60)
+        if not isinstance(scan_interval, (int, float)) or scan_interval < 60:
+            self.logger.warning(
+                f"scan_interval ({scan_interval}) doit être >= 60 secondes. Réglage à 60 secondes."
+            )
+            scan_interval = 60
+
         return {
             "username": config.get("username"),
             "password": config.get("password"),
-            "scan_interval": config.get("scan_interval", 60),  # Default à 60 secondes
+            "scan_interval": scan_interval,
             "mqtt_host": mqtt_host,
             "mqtt_port": int(mqtt_port),
             "mqtt_user": mqtt_user,
