@@ -5,6 +5,7 @@ from device import Device
 import logging
 import json
 
+
 class ApiClient:
     BASE_URL = "https://www.csnetmanager.com"
 
@@ -34,9 +35,13 @@ class ApiClient:
             if response.status_code == 302:
                 redirect_url = response.headers.get("Location", f"{self.BASE_URL}/")
                 response = self.session.get(redirect_url)
-                self.logger.debug(f"Cookies après redirection : {self.session.cookies.get_dict()}")
+                self.logger.debug(
+                    f"Cookies après redirection : {self.session.cookies.get_dict()}"
+                )
             return True
-        self.logger.error(f"Échec de l'authentification. Code HTTP: {response.status_code}")
+        self.logger.error(
+            f"Échec de l'authentification. Code HTTP: {response.status_code}"
+        )
         return False
 
     def _fetch_csrf_token(self):
@@ -54,7 +59,9 @@ class ApiClient:
             self.logger.debug(f"Nouveau token CSRF récupéré : {self.csrf_token}")
             return True
         except Exception as e:
-            self.logger.error(f"Erreur lors de la récupération du CSRF token : {str(e)}")
+            self.logger.error(
+                f"Erreur lors de la récupération du CSRF token : {str(e)}"
+            )
             return False
 
     def _extract_csrf_token(self, html):
@@ -66,45 +73,63 @@ class ApiClient:
         raw_data = self.get_raw_data()
         if not raw_data or "data" not in raw_data or "elements" not in raw_data["data"]:
             return None
-        return [Device(str(element["deviceId"]), element["deviceName"], element["parentId"]) for element in raw_data["data"]["elements"]]
+        return [
+            Device(str(element["deviceId"]), element["deviceName"], element["parentId"])
+            for element in raw_data["data"]["elements"]
+        ]
 
     def get_raw_data(self, max_retries=3):
         attempt = 0
         while attempt < max_retries:
             attempt += 1
-            self.logger.debug(f"Tentative {attempt}/{max_retries} : Récupération de l'état des appareils...")
+            self.logger.debug(
+                f"Tentative {attempt}/{max_retries} : Récupération de l'état des appareils..."
+            )
             try:
                 response = self.session.get(f"{self.BASE_URL}/data/elements")
                 if response.status_code == 302:
                     self.logger.warning("Session expirée, réauthentification requise.")
-                    if self.authenticate():
-                        response = self.session.get(f"{self.BASE_URL}/data/elements")
-                    else:
+                    if not self.authenticate():
                         self.logger.error("Échec de la réauthentification.")
-                        return None
-
-                if response.status_code != 200:
-                    self.logger.error(f"Échec de la requête API. Code HTTP: {response.status_code}")
-                    continue
-
-                # Vérifier si la réponse est bien JSON avant de parser
-                try:
-                    content_type = response.headers.get("Content-Type", "")
-                    if "application/json" not in content_type:
-                        self.logger.error(f"Réponse inattendue (non JSON) : Content-Type={content_type}, Contenu={response.text[:200]}")
                         if attempt == max_retries:
                             return None
                         continue
+                    # Après réauthentification, refaire la requête immédiatement
+                    response = self.session.get(f"{self.BASE_URL}/data/elements")
 
+                if response.status_code != 200:
+                    self.logger.error(
+                        f"Échec de la requête API. Code HTTP: {response.status_code}"
+                    )
+                    if attempt == max_retries:
+                        return None
+                    continue
+
+                # Vérifier si la réponse est bien JSON
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" not in content_type:
+                    self.logger.error(
+                        f"Réponse inattendue (non JSON) : Content-Type={content_type}, Contenu={response.text[:200]}"
+                    )
+                    if attempt == max_retries:
+                        return None
+                    # Forcer une nouvelle session complète si HTML reçu
+                    self.session = requests.Session()  # Nouvelle session
+                    continue
+
+                try:
                     data = response.json()
                     if not isinstance(data, dict) or "data" not in data:
                         self.logger.error("Structure JSON inattendue dans la réponse.")
                         if attempt == max_retries:
                             return None
                         continue
+                    self.logger.debug("Données JSON récupérées avec succès.")
                     return data
                 except json.JSONDecodeError as e:
-                    self.logger.error(f"Erreur lors du parsing JSON : {str(e)}. Contenu reçu : {response.text[:200]}")
+                    self.logger.error(
+                        f"Erreur lors du parsing JSON : {str(e)}. Contenu reçu : {response.text[:200]}"
+                    )
                     if attempt == max_retries:
                         return None
                     continue
@@ -115,8 +140,10 @@ class ApiClient:
         return None
 
     def set_heat_setting(self, indoor_id, run_stop_dhw=None, setting_temp_dhw=None):
-        self.logger.info(f"Modification de l'état/temp pour indoorId={indoor_id}, runStopDHW={run_stop_dhw}, settingTempDHW={setting_temp_dhw}")
-        
+        self.logger.info(
+            f"Modification de l'état/temp pour indoorId={indoor_id}, runStopDHW={run_stop_dhw}, settingTempDHW={setting_temp_dhw}"
+        )
+
         if not self._fetch_csrf_token():
             self.logger.error("Échec récupération token CSRF avant POST.")
             return False
@@ -140,7 +167,11 @@ class ApiClient:
         }
 
         try:
-            response = self.session.post(f"{self.BASE_URL}/data/indoor/heat_setting", data=payload, headers=headers)
+            response = self.session.post(
+                f"{self.BASE_URL}/data/indoor/heat_setting",
+                data=payload,
+                headers=headers,
+            )
             if response.status_code == 200:
                 try:
                     resp_json = response.json()
@@ -154,14 +185,20 @@ class ApiClient:
                     self.logger.error(f"Réponse non JSON : {response.text}")
                     return False
             elif response.status_code in (302, 403):
-                self.logger.warning(f"Erreur {response.status_code}, réauthentification requise...")
+                self.logger.warning(
+                    f"Erreur {response.status_code}, réauthentification requise..."
+                )
                 if self.authenticate():
-                    return self.set_heat_setting(indoor_id, run_stop_dhw, setting_temp_dhw)
+                    return self.set_heat_setting(
+                        indoor_id, run_stop_dhw, setting_temp_dhw
+                    )
                 else:
                     self.logger.error("Échec de la réauthentification.")
                     return False
             else:
-                self.logger.error(f"Échec mise à jour. Code: {response.status_code}, Réponse: {response.text}")
+                self.logger.error(
+                    f"Échec mise à jour. Code: {response.status_code}, Réponse: {response.text}"
+                )
                 return False
         except Exception as e:
             self.logger.error(f"Erreur lors de l'envoi de la requête POST : {str(e)}")
