@@ -1,8 +1,8 @@
-# Yutampo HA Addon
+# Yutampo2MQTT HA Addon
 
-![License](https://img.shields.io/github/license/echavet/yutampo_ha_addon)  
-![GitHub Issues](https://img.shields.io/github/issues/echavet/yutampo_ha_addon)  
-![GitHub Stars](https://img.shields.io/github/stars/echavet/yutampo_ha_addon)
+![License](https://img.shields.io/github/license/echavet/Yutampo2MQTT)  
+![GitHub Issues](https://img.shields.io/github/issues/echavet/Yutampo2MQTT)  
+![GitHub Stars](https://img.shields.io/github/stars/echavet/Yutampo2MQTT)
 
 A Home Assistant Add-on to integrate Yutampo water heaters (CSNet Manager) with Home Assistant via MQTT, enabling seamless remote monitoring and control of temperature and operating modes.
 
@@ -44,7 +44,7 @@ A Home Assistant Add-on to integrate Yutampo water heaters (CSNet Manager) with 
 1. **Add the Repository**:
    - In Home Assistant, go to **Settings > Add-ons > Add-on Store**.
    - Click the three dots (`...`) in the top-right corner and select **Repositories**.
-   - Add this repository URL: `https://github.com/echavet/yutampo_ha_addon`.
+   - Add this repository URL: `https://github.com/echavet/Yutampo2MQTT`.
    - Click **Add** and wait for the repository to load.
 
 2. **Install the Add-on**:
@@ -66,8 +66,8 @@ For users who prefer running the add-on outside of Home Assistant’s add-on sys
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/echavet/yutampo_ha_addon.git
-   cd yutampo_ha_addon
+   git clone https://github.com/echavet/Yutampo2MQTT.git
+   cd Yutampo2MQTT
    ```
 
 2. **Install Dependencies**:
