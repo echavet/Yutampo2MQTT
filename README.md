@@ -197,4 +197,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - **Flexibility**: If you want to add more details (e.g., screenshots of the integration in HA, specific examples of logbook entries, or badges for build status), let me know!
 - **License**: I assumed MIT License, but if you prefer another license (e.g., GPL), let me know, and I’ll update the badge and section.
 
-Let me know if you want any adjustments or additions to this `README.md`! 😊 Now that the core functionality is rock-solid, it’s a great time to showcase it properly on GitHub. What do you think?
