@@ -53,13 +53,17 @@ class WeatherClient:
             or "forecast" not in weather_data["attributes"]
         ):
             self.logger.error(
-                f"Aucune prévision trouvée dans les données de {self.weather_entity}"
+                f"Aucune prévision trouvée dans les données de {self.weather_entity}. Utilisation de l’heure par défaut (15h)."
             )
+            self.hottest_hour = 15
             return
 
         forecast = weather_data["attributes"]["forecast"]
         if not forecast:
-            self.logger.error(f"Prévisions vides pour {self.weather_entity}")
+            self.logger.error(
+                f"Prévisions vides pour {self.weather_entity}. Utilisation de l’heure par défaut (15h)."
+            )
+            self.hottest_hour = 15
             return
 
         hottest_temp = float("-inf")
