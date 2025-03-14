@@ -153,7 +153,14 @@ class VirtualThermostat:
             self.logger.info(
                 f"Chauffe-eau physique en mode heat avec consigne {self.target_temperature}°C."
             )
-        # Mode "auto" est géré par AutomationHandler, pas d’action immédiate ici
+        elif self.mode == "auto":
+            # Vérifie si le physique est éteint, et rallume si nécessaire
+            if physical_device.mode == "off":
+                self.mqtt_handler.api_client.set_heat_setting(
+                    physical_device.parent_id, run_stop_dhw=1
+                )
+                self.logger.info("Chauffe-eau physique rallumé pour mode auto.")
+            # L’optimisation est gérée par AutomationHandler
 
     def _log_weather_info(self):
         if (

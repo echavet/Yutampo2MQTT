@@ -275,6 +275,9 @@ class MqttHandler:
                 "model": "Settings",
             },
         }
+        self.logger.debug(
+            f"Payload MQTT Discovery pour input_select : {json.dumps(input_select_payload)}"
+        )
         self.client.publish(
             input_select_topic, json.dumps(input_select_payload), retain=True
         )
