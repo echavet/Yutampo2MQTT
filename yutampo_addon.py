@@ -1,4 +1,3 @@
-# yutampo_addon.py
 import json
 import os
 import logging
@@ -6,6 +5,9 @@ import time
 from api_client import ApiClient
 from mqtt_handler import MqttHandler
 from scheduler import Scheduler
+from virtual_thermostat import VirtualThermostat
+from weather_client import WeatherClient
+from automation_handler import AutomationHandler
 
 
 class YutampoAddon:
@@ -17,6 +19,9 @@ class YutampoAddon:
         self.mqtt_handler = MqttHandler(self.config, api_client=self.api_client)
         self.scheduler = Scheduler(self.api_client, self.mqtt_handler)
         self.devices = []
+        self.virtual_thermostat = None
+        self.weather_client = None
+        self.automation_handler = None
 
     def _load_config(self, config_path):
         if not os.path.exists(config_path):
@@ -31,6 +36,7 @@ class YutampoAddon:
         mqtt_port = os.getenv("MQTTPORT") or os.getenv("MQTT_PORT", "1883")
         mqtt_user = os.getenv("MQTTUSER") or os.getenv("MQTT_USERNAME")
         mqtt_password = os.getenv("MQTTPASSWORD") or os.getenv("MQTT_PASSWORD")
+        ha_token = os.getenv("HASSIO_TOKEN")  # Token pour l'API HA
 
         # Récupérer scan_interval et s'assurer qu'il est >= 60 secondes
         scan_interval = config.get("scan_interval", 60)
@@ -40,6 +46,49 @@ class YutampoAddon:
             )
             scan_interval = 60
 
+        # Récupérer les préréglages personnalisés
+        presets = config.get(
+            "presets",
+            [
+                {
+                    "name": "Hiver",
+                    "target_temperature": 50,
+                    "target_temperature_low": 45,
+                    "target_temperature_high": 55,
+                    "duration": 6,
+                },
+                {
+                    "name": "Printemps/Automne",
+                    "target_temperature": 45,
+                    "target_temperature_low": 41,
+                    "target_temperature_high": 49,
+                    "duration": 5,
+                },
+                {
+                    "name": "Été",
+                    "target_temperature": 40,
+                    "target_temperature_low": 37,
+                    "target_temperature_high": 43,
+                    "duration": 4,
+                },
+            ],
+        )
+
+        # Vérifier que les préréglages contiennent les clés requises
+        for preset in presets:
+            required_keys = [
+                "name",
+                "target_temperature",
+                "target_temperature_low",
+                "target_temperature_high",
+                "duration",
+            ]
+            if not all(key in preset for key in required_keys):
+                self.logger.error(
+                    f"Préréglage mal formé : {preset}. Clés requises : {required_keys}"
+                )
+                exit(1)
+
         return {
             "username": config.get("username"),
             "password": config.get("password"),
@@ -48,6 +97,8 @@ class YutampoAddon:
             "mqtt_port": int(mqtt_port),
             "mqtt_user": mqtt_user,
             "mqtt_password": mqtt_password,
+            "ha_token": ha_token,
+            "presets": presets,
         }
 
     def start(self):
@@ -89,13 +140,45 @@ class YutampoAddon:
 
         self.scheduler.schedule_updates(self.devices, self.config["scan_interval"])
 
+        # Initialisation du thermostat virtuel
+        self.virtual_thermostat = VirtualThermostat(self.mqtt_handler)
+        self.mqtt_handler.register_virtual_thermostat(self.virtual_thermostat)
+
+        # Initialisation des entités de réglage (input_select)
+        self.mqtt_handler.register_settings_entities(self.config["presets"])
+
+        # Initialisation du client météo
+        self.weather_client = WeatherClient(self.config)
+
+        # Initialisation de l'automation interne (on suppose un seul Yutampo physique pour l'instant)
+        if self.devices:
+            self.automation_handler = AutomationHandler(
+                self.api_client,
+                self.mqtt_handler,
+                self.virtual_thermostat,
+                self.devices[0],  # Utilise le premier appareil Yutampo détecté
+                self.weather_client,
+                self.config["presets"],  # Injection des préréglages complets
+            )
+            self.mqtt_handler.automation_handler = self.automation_handler
+            self.automation_handler.start()
+
         self.logger.info(
-            "Le planificateur est en cours d'exécution. Appuyez sur Ctrl+C pour arrêter."
+            "Le planificateur et l'automation interne sont en cours d'exécution. Appuyez sur Ctrl+C pour arrêter."
         )
         try:
             while True:
                 time.sleep(1)
         except (KeyboardInterrupt, SystemExit):
             self.scheduler.shutdown()
+            self.automation_handler.scheduler.shutdown()
             self.mqtt_handler.disconnect()
             self.logger.info("Arrêt du programme.")
+
+
+if __name__ == "__main__":
+    # Ce bloc est normalement dans main.py, mais inclus ici pour référence
+    logging.basicConfig(level=logging.DEBUG)
+    LOGGER = logging.getLogger("Yutampo_ha_addon")
+    addon = YutampoAddon(config_path="/data/options.json")
+    addon.start()
