@@ -1,6 +1,6 @@
 import logging
 import json
-import aiohttp
+import requests
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -27,23 +27,22 @@ class WeatherClient:
             f"Démarrage de la récupération des prévisions pour {self.weather_entity} via API HA toutes les 15 minutes."
         )
 
-    async def fetch_forecast(self):
+    def fetch_forecast(self):
         """Récupère les prévisions via l’API Home Assistant."""
         headers = {
             "Authorization": f"Bearer {self.ha_token}",
             "Content-Type": "application/json",
         }
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.api_url, headers=headers) as response:
-                    if response.status != 200:
-                        self.logger.error(
-                            f"Erreur lors de la récupération des prévisions : {response.status} - {await response.text()}"
-                        )
-                        return
-                    weather_data = await response.json()
-                    self.logger.debug(f"Données météo reçues via API : {weather_data}")
-                    self._parse_forecast(weather_data)
+            response = requests.get(self.api_url, headers=headers, timeout=10)
+            if response.status_code != 200:
+                self.logger.error(
+                    f"Erreur lors de la récupération des prévisions : {response.status_code} - {response.text}"
+                )
+                return
+            weather_data = response.json()
+            self.logger.debug(f"Données météo reçues via API : {weather_data}")
+            self._parse_forecast(weather_data)
         except Exception as e:
             self.logger.error(f"Erreur lors de la requête API HA : {str(e)}")
 
