@@ -55,11 +55,12 @@ class AutomationHandler:
         if end_hour >= 24:
             end_hour -= 24
 
+        # Récupérer les paramètres du thermostat virtuel
         c = self.virtual_thermostat.target_temperature
-        a = (
-            self.virtual_thermostat.target_temperature_high
-            - self.virtual_thermostat.target_temperature_low
-        ) / 2
+        temp_min = self.virtual_thermostat.target_temperature_low
+        temp_max = self.virtual_thermostat.target_temperature_high
+        a_min = c - temp_min  # Amplitude vers le bas
+        a_max = temp_max - c  # Amplitude vers le haut
 
         if (current_hour >= start_hour and current_hour < end_hour) or (
             start_hour > end_hour
@@ -70,9 +71,17 @@ class AutomationHandler:
                 progress = (current_hour - start_hour) / self.heating_duration
             else:
                 progress = (current_hour + 24 - start_hour) / self.heating_duration
-            target_temp = c - a + 2 * a * progress
+
+            # Interpolation en deux étapes pour gérer l'asymétrie
+            if progress <= 0.5:
+                # De temp_min à c
+                target_temp = temp_min + (c - temp_min) * (progress / 0.5)
+            else:
+                # De c à temp_max
+                target_temp = c + (temp_max - c) * ((progress - 0.5) / 0.5)
         else:
-            target_temp = c - a  # En dehors de la plage, utiliser le point bas
+            # En dehors de la plage, utiliser la borne basse
+            target_temp = temp_min
 
         target_temp = round(target_temp, 1)
         self.logger.debug(f"Consigne calculée pour le Yutampo : {target_temp}°C")
