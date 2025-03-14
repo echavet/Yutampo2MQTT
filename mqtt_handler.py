@@ -47,8 +47,8 @@ class MqttHandler:
             self.client.subscribe("yutampo/climate/+/set_temperature_low")
             self.client.subscribe("yutampo/climate/+/set_temperature_high")
             self.client.subscribe(
-                "yutampo/climate/+/set_preset_mode"
-            )  # Ajout pour les préréglages
+                "yutampo/input_select/+/set"
+            )  # Ajout pour input_select
         else:
             self.logger.error(
                 f"Échec de la connexion au broker MQTT, code de retour : {rc}"
@@ -60,7 +60,7 @@ class MqttHandler:
         )
         try:
             topic_parts = msg.topic.split("/")
-            entity_type = topic_parts[1]  # climate
+            entity_type = topic_parts[1]  # climate ou input_select
             device_id = topic_parts[2]
             command_part = topic_parts[3]
 
@@ -103,11 +103,6 @@ class MqttHandler:
                     elif command_part == "set_mode":
                         new_mode = payload
                         self.virtual_thermostat.set_mode(new_mode)
-                    elif command_part == "set_preset_mode":
-                        new_preset = payload
-                        if self.automation_handler:
-                            self.automation_handler.set_season_preset(new_preset)
-                        self.virtual_thermostat.set_preset_mode(new_preset)
                 else:
                     # Gestion des commandes pour le Yutampo physique
                     device = self.devices[device_id]
@@ -190,6 +185,17 @@ class MqttHandler:
                                 device.action,
                                 device.operation_label,
                             )
+            elif entity_type == "input_select" and command_part == "set":
+                # Gestion des commandes pour input_select (préréglages saisonniers)
+                if device_id == "yutampo_season_preset":
+                    new_preset = payload
+                    if self.automation_handler and new_preset in [
+                        p["name"] for p in self.automation_handler.presets
+                    ]:
+                        self.automation_handler.set_season_preset(new_preset)
+                        self.publish_input_select_state(device_id, new_preset)
+                    else:
+                        self.logger.warning(f"Préréglage inconnu : {new_preset}")
             else:
                 self.logger.warning(
                     f"Type de commande inconnu reçu sur topic {msg.topic}: {payload}"
@@ -292,9 +298,39 @@ class MqttHandler:
         self.virtual_thermostat = virtual_thermostat
         virtual_thermostat.register()
 
-    def register_settings_entities(self):
-        """Supprimée car les paramètres sont maintenant gérés via les options de l'addon et les presets."""
-        pass
+    def register_settings_entities(self, presets):
+        """Publie l'entité input_select pour les préréglages personnalisés."""
+        input_select_topic = "homeassistant/input_select/yutampo_season_preset/config"
+        preset_names = [preset["name"] for preset in presets]
+        input_select_payload = {
+            "name": "Préréglage saisonnier du Yutampo",
+            "unique_id": "yutampo_season_preset",
+            "state_topic": "yutampo/input_select/yutampo_season_preset/state",
+            "command_topic": "yutampo/input_select/yutampo_season_preset/set",
+            "options": preset_names,
+            "retain": True,
+            "device": {
+                "identifiers": ["yutampo_settings"],
+                "name": "Yutampo Settings",
+                "manufacturer": "Yutampo",
+                "model": "Settings",
+            },
+        }
+        self.client.publish(
+            input_select_topic, json.dumps(input_select_payload), retain=True
+        )
+        self.logger.info(
+            "Configuration MQTT Discovery publiée pour input_select.yutampo_season_preset"
+        )
+        self.publish_input_select_state(
+            "yutampo_season_preset", preset_names[0]
+        )  # Valeur initiale (premier préréglage)
+
+    def publish_input_select_state(self, entity_id, value):
+        """Publie l'état d'une entité input_select."""
+        state_topic = f"yutampo/input_select/{entity_id}/state"
+        self.client.publish(state_topic, value, retain=True)
+        self.logger.debug(f"État publié pour {entity_id}: {value}")
 
     def disconnect(self):
         self.client.loop_stop()

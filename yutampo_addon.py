@@ -46,10 +46,48 @@ class YutampoAddon:
             )
             scan_interval = 60
 
-        # Récupérer les durées de variation des préréglages
-        preset_durations = config.get(
-            "preset_durations", {"Hiver": 6, "Printemps/Automne": 5, "Été": 4}
+        # Récupérer les préréglages personnalisés
+        presets = config.get(
+            "presets",
+            [
+                {
+                    "name": "Hiver",
+                    "target_temperature": 50,
+                    "target_temperature_low": 45,
+                    "target_temperature_high": 55,
+                    "duration": 6,
+                },
+                {
+                    "name": "Printemps/Automne",
+                    "target_temperature": 45,
+                    "target_temperature_low": 41,
+                    "target_temperature_high": 49,
+                    "duration": 5,
+                },
+                {
+                    "name": "Été",
+                    "target_temperature": 40,
+                    "target_temperature_low": 37,
+                    "target_temperature_high": 43,
+                    "duration": 4,
+                },
+            ],
         )
+
+        # Vérifier que les préréglages contiennent les clés requises
+        for preset in presets:
+            required_keys = [
+                "name",
+                "target_temperature",
+                "target_temperature_low",
+                "target_temperature_high",
+                "duration",
+            ]
+            if not all(key in preset for key in required_keys):
+                self.logger.error(
+                    f"Préréglage mal formé : {preset}. Clés requises : {required_keys}"
+                )
+                exit(1)
 
         return {
             "username": config.get("username"),
@@ -60,7 +98,7 @@ class YutampoAddon:
             "mqtt_user": mqtt_user,
             "mqtt_password": mqtt_password,
             "ha_token": ha_token,
-            "preset_durations": preset_durations,
+            "presets": presets,
         }
 
     def start(self):
@@ -106,6 +144,9 @@ class YutampoAddon:
         self.virtual_thermostat = VirtualThermostat(self.mqtt_handler)
         self.mqtt_handler.register_virtual_thermostat(self.virtual_thermostat)
 
+        # Initialisation des entités de réglage (input_select)
+        self.mqtt_handler.register_settings_entities(self.config["presets"])
+
         # Initialisation du client météo
         self.weather_client = WeatherClient(self.config)
 
@@ -117,11 +158,9 @@ class YutampoAddon:
                 self.virtual_thermostat,
                 self.devices[0],  # Utilise le premier appareil Yutampo détecté
                 self.weather_client,
-                self.config["preset_durations"],  # Injection des durées de variation
+                self.config["presets"],  # Injection des préréglages complets
             )
-            self.mqtt_handler.automation_handler = (
-                self.automation_handler
-            )  # Injecter l'automation_handler dans mqtt_handler
+            self.mqtt_handler.automation_handler = self.automation_handler
             self.automation_handler.start()
 
         self.logger.info(

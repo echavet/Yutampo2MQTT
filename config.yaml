@@ -17,10 +17,22 @@ options:
   username: "ton_username"
   password: "ton_password"
   scan_interval: 300
-  preset_durations:
-    Hiver: 6
-    "Printemps/Automne": 5
-    Été: 4
+  presets:
+    - name: "Hiver"
+      target_temperature: 50
+      target_temperature_low: 45
+      target_temperature_high: 55
+      duration: 6
+    - name: "Printemps/Automne"
+      target_temperature: 45
+      target_temperature_low: 41
+      target_temperature_high: 49
+      duration: 5
+    - name: "Été"
+      target_temperature: 40
+      target_temperature_low: 37
+      target_temperature_high: 43
+      duration: 4
   mqtt_host: "<auto_detect>"
   mqtt_port: "<auto_detect>"
   mqtt_user: "<auto_detect>"
@@ -30,10 +42,12 @@ schema:
   username: str
   password: password
   scan_interval: int
-  preset_durations:
-    Hiver: int
-    "Printemps/Automne": int
-    Été: int
+  presets:
+    - name: str
+      target_temperature: float
+      target_temperature_low: float
+      target_temperature_high: float
+      duration: float
   mqtt_host: str
   mqtt_port: str
   mqtt_user: str
