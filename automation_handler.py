@@ -57,7 +57,6 @@ class AutomationHandler:
         a_min = c - temp_min
         a_max = temp_max - c
 
-        # Logs pour l'heure la plus chaude, la plage active et la température par défaut
         self.logger.info(f"Heure la plus chaude : {hottest_hour:.2f}h")
         self.logger.info(
             f"Plage active du chauffage : {start_hour:.2f}h - {end_hour:.2f}h"
@@ -115,22 +114,8 @@ class AutomationHandler:
                     preset["target_temperature_high"]
                 )
                 self.logger.info(
-                    f"Préréglage saisonnier mis à jour : {self.season_preset}, durée de variation : {self.heating_duration} heures"
+                    f"Action utilisateur : Préréglage saisonnier mis à jour : {self.season_preset}, durée de variation : {self.heating_duration} heures"
                 )
-                # Logs supplémentaires après changement de préréglage
-                hottest_hour = self.weather_client.get_hottest_hour()
-                start_hour = hottest_hour - (self.heating_duration / 2)
-                end_hour = hottest_hour + (self.heating_duration / 2)
-                if start_hour < 0:
-                    start_hour += 24
-                if end_hour >= 24:
-                    end_hour -= 24
-                self.logger.info(f"Heure la plus chaude : {hottest_hour:.2f}h")
-                self.logger.info(
-                    f"Plage active du chauffage : {start_hour:.2f}h - {end_hour:.2f}h"
-                )
-                self.logger.info(
-                    f"Température par défaut en dehors de la plage : {self.virtual_thermostat.target_temperature_low:.1f}°C"
-                )
+                # Les logs supplémentaires sont gérés par set_temperature/set_temperature_low/set_temperature_high
                 return
         self.logger.warning(f"Préréglage inconnu : {preset_name}")

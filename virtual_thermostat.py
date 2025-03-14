@@ -11,8 +11,8 @@ class VirtualThermostat:
         self.target_temperature_low = 41.0
         self.target_temperature_high = 49.0
         self.mode = "heat"
-        self.min_temp = 20  # Limite minimale globale
-        self.max_temp = 60  # Limite maximale globale
+        self.min_temp = 20
+        self.max_temp = 60
 
     def register(self):
         discovery_topic = (
@@ -81,12 +81,13 @@ class VirtualThermostat:
             )
             return
         self.target_temperature = temperature
-        self.logger.info(f"Consigne cible mise à jour : {self.target_temperature}°C")
-        # Recalculer les bornes en conservant l'amplitude existante si possible
         amplitude = (self.target_temperature_high - self.target_temperature_low) / 2
         self.target_temperature_low = max(self.min_temp, temperature - amplitude)
         self.target_temperature_high = min(self.max_temp, temperature + amplitude)
-        self.log_weather_info()
+        self.logger.info(
+            f"Action utilisateur : Consigne cible mise à jour à {self.target_temperature}°C"
+        )
+        self._log_weather_info()
         self.publish_state()
 
     def set_temperature_low(self, temperature_low):
@@ -97,9 +98,9 @@ class VirtualThermostat:
             return
         self.target_temperature_low = temperature_low
         self.logger.info(
-            f"Température basse mise à jour : {self.target_temperature_low}°C"
+            f"Action utilisateur : Température basse mise à jour à {self.target_temperature_low}°C"
         )
-        self.log_weather_info()
+        self._log_weather_info()
         self.publish_state()
 
     def set_temperature_high(self, temperature_high):
@@ -110,24 +111,20 @@ class VirtualThermostat:
             return
         self.target_temperature_high = temperature_high
         self.logger.info(
-            f"Température haute mise à jour : {self.target_temperature_high}°C"
+            f"Action utilisateur : Température haute mise à jour à {self.target_temperature_high}°C"
         )
-        self.log_weather_info()
+        self._log_weather_info()
         self.publish_state()
 
     def set_mode(self, mode):
         if mode in ["heat"]:
             self.mode = mode
+            self.logger.info(f"Action utilisateur : Mode mis à jour à {self.mode}")
             self.publish_state()
         else:
             self.logger.warning(f"Mode non supporté reçu : {mode}")
 
-    def log_weather_info(self):
-        """Ajoute des logs pour la météo et la plage active après un changement."""
-        from automation_handler import (
-            AutomationHandler,
-        )  # Import local pour éviter une dépendance circulaire
-
+    def _log_weather_info(self):
         if (
             hasattr(self.mqtt_handler, "automation_handler")
             and self.mqtt_handler.automation_handler

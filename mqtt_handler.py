@@ -4,21 +4,19 @@ import logging
 
 
 class MqttHandler:
-    def __init__(self, config, api_client=None, automation_handler=None):
+    def __init__(self, config, api_client=None):
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.client = mqtt.Client()
         self.client.on_connect = self._on_connect
-        self.client.on_message = self._on_message
         self.mqtt_host = config["mqtt_host"]
         self.mqtt_port = config["mqtt_port"]
         self.mqtt_user = config["mqtt_user"]
         self.mqtt_password = config["mqtt_password"]
-        self.discovery_prefix = config["discovery_prefix"]  # Récupérer le préfixe
+        self.discovery_prefix = config["discovery_prefix"]
         self.api_client = api_client
-        self.automation_handler = automation_handler
         self.devices = {}
         self.virtual_thermostat = None
-
+        self.automation_handler = None
         self.logger.debug(
             f"Initialisation MqttHandler avec host={self.mqtt_host}, port={self.mqtt_port}, user={self.mqtt_user}"
         )
@@ -28,7 +26,6 @@ class MqttHandler:
         if not self.mqtt_host:
             self.logger.error("MQTT host non défini. Impossible de se connecter.")
             raise ValueError("MQTT host cannot be empty or None")
-
         self.logger.info(
             f"Tentative de connexion au broker MQTT : {self.mqtt_host}:{self.mqtt_port}"
         )
@@ -55,14 +52,13 @@ class MqttHandler:
 
     def _on_message(self, client, userdata, msg):
         self.logger.info(
-            f"Message reçu sur le topic {msg.topic}: {msg.payload.decode()}"
+            f"Action utilisateur : Message reçu sur le topic {msg.topic}: {msg.payload.decode()}"
         )
         try:
             topic_parts = msg.topic.split("/")
-            entity_type = topic_parts[1]  # climate ou input_select
+            entity_type = topic_parts[1]
             device_id = topic_parts[2]
             command_part = topic_parts[3]
-
             payload = msg.payload.decode()
 
             if entity_type == "climate":
@@ -73,40 +69,25 @@ class MqttHandler:
                     self.logger.error(f"Device {device_id} inconnu dans DEVICES.")
                     return
 
-                if device_id == "yutampo_thermostat_virtual":
+                if (
+                    device_id == "yutampo_thermostat_virtual"
+                    and self.virtual_thermostat
+                ):
                     if command_part == "set_temperature":
                         new_temp = float(payload)
-                        if 20 <= new_temp <= 60:
-                            self.virtual_thermostat.set_temperature(new_temp)
-                        else:
-                            self.logger.warning(
-                                f"Température hors plage (20-60°C) : {new_temp}"
-                            )
+                        self.virtual_thermostat.set_temperature(new_temp)
                     elif command_part == "set_temperature_low":
                         new_temp_low = float(payload)
-                        if 20 <= new_temp_low <= 60:
-                            self.virtual_thermostat.set_temperature_low(new_temp_low)
-                        else:
-                            self.logger.warning(
-                                f"Température basse hors plage (20-60°C) : {new_temp_low}"
-                            )
+                        self.virtual_thermostat.set_temperature_low(new_temp_low)
                     elif command_part == "set_temperature_high":
                         new_temp_high = float(payload)
-                        if 20 <= new_temp_high <= 60:
-                            self.virtual_thermostat.set_temperature_high(new_temp_high)
-                        else:
-                            self.logger.warning(
-                                f"Température haute hors plage (20-60°C) : {new_temp_high}"
-                            )
+                        self.virtual_thermostat.set_temperature_high(new_temp_high)
                     elif command_part == "set_mode":
                         new_mode = payload
                         self.virtual_thermostat.set_mode(new_mode)
                 else:
                     device = self.devices[device_id]
                     parent_id = device.parent_id
-                    current_mode = device.mode
-                    current_temp = device.setting_temperature
-
                     if command_part == "mode" and topic_parts[-1] == "set":
                         new_mode = payload
                         if new_mode not in ["off", "heat"]:
@@ -131,19 +112,6 @@ class MqttHandler:
                                 self.logger.error(
                                     f"Échec de l'application du mode {new_mode} via API"
                                 )
-                        else:
-                            self.logger.warning(
-                                "ApiClient non disponible, mode publié localement uniquement"
-                            )
-                            device.mode = new_mode
-                            self.publish_state(
-                                device.id,
-                                device.setting_temperature,
-                                device.current_temperature,
-                                device.mode,
-                                device.action,
-                                device.operation_label,
-                            )
                     elif command_part == "set":
                         new_temp = float(payload)
                         if not (30 <= new_temp <= 60):
@@ -169,41 +137,22 @@ class MqttHandler:
                                 self.logger.error(
                                     f"Échec de l'application de la température {new_temp} via API"
                                 )
-                        else:
-                            self.logger.warning(
-                                "ApiClient non disponible, température publiée localement uniquement"
-                            )
-                            device.setting_temperature = new_temp
-                            self.publish_state(
-                                device.id,
-                                device.setting_temperature,
-                                device.current_temperature,
-                                device.mode,
-                                device.action,
-                                device.operation_label,
-                            )
             elif entity_type == "input_select" and command_part == "set":
-                if device_id == "yutampo_season_preset":
+                if device_id == "yutampo_season_preset" and self.automation_handler:
                     new_preset = payload
-                    if self.automation_handler and new_preset in [
+                    if new_preset in [
                         p["name"] for p in self.automation_handler.presets
                     ]:
                         self.automation_handler.set_season_preset(new_preset)
                         self.publish_input_select_state(device_id, new_preset)
                     else:
                         self.logger.warning(f"Préréglage inconnu : {new_preset}")
-            else:
-                self.logger.warning(
-                    f"Type de commande inconnu reçu sur topic {msg.topic}: {payload}"
-                )
-        except ValueError as ve:
-            self.logger.error(f"Erreur lors de la conversion de la valeur: {str(ve)}")
         except Exception as e:
-            self.logger.error(f"Erreur lors du traitement du message: {str(e)}")
+            self.logger.error(f"Erreur lors du traitement du message : {str(e)}")
 
     def publish_discovery(self, device):
         self.devices[device.id] = device
-        discovery_topic = f"{self.discovery_prefix}/climate/{device.id}/config"  # Utilisation du préfixe
+        discovery_topic = f"{self.discovery_prefix}/climate/{device.id}/config"
         payload = {
             "name": device.name,
             "unique_id": device.id,
@@ -297,9 +246,7 @@ class MqttHandler:
             f"{self.discovery_prefix}/input_select/yutampo_season_preset/config"
         )
         preset_names = [preset["name"] for preset in presets]
-        self.logger.debug(
-            f"Options publiées pour input_select : {preset_names}"
-        )  # Log supplémentaire
+        self.logger.debug(f"Options publiées pour input_select : {preset_names}")
         input_select_payload = {
             "name": "Préréglage saisonnier du Yutampo",
             "unique_id": "yutampo_season_preset",

@@ -1,67 +1,59 @@
 import logging
+import json
 from datetime import datetime
 
 
 class WeatherClient:
-    def __init__(self, config):
+    def __init__(self, config, mqtt_handler):
         self.logger = logging.getLogger("Yutampo_ha_addon")
-        self.ha_token = config.get("ha_token")
-        self.api_base_url = "http://supervisor/core/api"
+        self.weather_entity = config["weather_entity"]
+        self.mqtt_handler = mqtt_handler
+        self.hottest_hour = 15  # Valeur par défaut
+        self.mqtt_handler.client.on_message = self._on_message  # Surcharge du callback
 
-    def get_hottest_hour(self):
+    def subscribe(self):
+        state_topic = f"{self.mqtt_handler.discovery_prefix}/weather/{self.weather_entity.split('.')[1]}/state"
+        self.mqtt_handler.client.subscribe(state_topic)
+        self.logger.info(f"Abonnement au topic météo : {state_topic}")
+
+    def _on_message(self, client, userdata, msg):
         try:
-            import requests
-
-            headers = {
-                "Authorization": f"Bearer {self.ha_token}",
-                "Content-Type": "application/json",
-            }
-
-            self.logger.debug(
-                f"Tentative de récupération des données météo depuis {self.api_base_url}/states/weather.home"
-            )
-            response = requests.get(
-                f"{self.api_base_url}/states/weather.home", headers=headers, timeout=10
-            )
-            self.logger.debug(
-                f"Réponse HTTP : {response.status_code}, Contenu : {response.text}"
-            )
-            response.raise_for_status()
-            weather_data = response.json()
-
             if (
-                "attributes" not in weather_data
-                or "forecast" not in weather_data["attributes"]
+                msg.topic
+                == f"{self.mqtt_handler.discovery_prefix}/weather/{self.weather_entity.split('.')[1]}/state"
             ):
-                self.logger.error(
-                    "Aucune donnée de prévision disponible pour weather.home"
+                weather_data = json.loads(msg.payload.decode())
+                self.logger.debug(f"Données météo reçues : {weather_data}")
+                if "forecast" not in weather_data:
+                    self.logger.error(
+                        f"Aucune prévision trouvée dans les données de {self.weather_entity}"
+                    )
+                    return
+
+                forecast = weather_data["forecast"]
+                if not forecast:
+                    self.logger.error(f"Prévisions vides pour {self.weather_entity}")
+                    return
+
+                hottest_temp = float("-inf")
+                hottest_hour = 15
+
+                for entry in forecast:
+                    temp = entry.get("temperature", float("-inf"))
+                    dt = datetime.strptime(entry["datetime"], "%Y-%m-%dT%H:%M:%S%z")
+                    hour = dt.hour + dt.minute / 60.0
+                    if temp > hottest_temp:
+                        hottest_temp = temp
+                        hottest_hour = hour
+
+                self.hottest_hour = hottest_hour
+                self.logger.info(
+                    f"Heure la plus chaude mise à jour via MQTT : {self.hottest_hour:.2f}h avec {hottest_temp}°C"
                 )
-                return 15
-
-            forecast = weather_data["attributes"]["forecast"]
-            if not forecast:
-                self.logger.error("Prévisions vides pour weather.home")
-                return 15
-
-            hottest_temp = float("-inf")
-            hottest_hour = 15
-
-            for entry in forecast:
-                temp = entry.get("temperature", float("-inf"))
-                dt = datetime.strptime(entry["datetime"], "%Y-%m-%dT%H:%M:%S%z")
-                hour = dt.hour + dt.minute / 60.0
-
-                if temp > hottest_temp:
-                    hottest_temp = temp
-                    hottest_hour = hour
-
-            self.logger.debug(
-                f"Heure la plus chaude détectée : {hottest_hour}h avec {hottest_temp}°C"
-            )
-            return hottest_hour
-
         except Exception as e:
             self.logger.error(
-                f"Erreur lors de la récupération des prévisions météo : {str(e)}"
+                f"Erreur lors du traitement des données météo MQTT : {str(e)}"
             )
-            return 15
+
+    def get_hottest_hour(self):
+        return self.hottest_hour

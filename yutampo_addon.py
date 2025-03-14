@@ -12,8 +12,13 @@ from automation_handler import AutomationHandler
 
 class YutampoAddon:
     def __init__(self, config_path):
+        # Configurer le logging dès le début avec un niveau temporaire
+        logging.basicConfig(level=logging.DEBUG)
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.config = self._load_config(config_path)
+        # Appliquer le niveau de log configuré
+        log_level = self.config.get("log_level", "DEBUG")
+        logging.getLogger().setLevel(getattr(logging, log_level.upper()))
         self.logger.debug(f"Config initiale : {self.config}")
         self.api_client = ApiClient(self.config)
         self.mqtt_handler = MqttHandler(self.config, api_client=self.api_client)
@@ -36,9 +41,11 @@ class YutampoAddon:
         mqtt_port = os.getenv("MQTTPORT") or os.getenv("MQTT_PORT", "1883")
         mqtt_user = os.getenv("MQTTUSER") or os.getenv("MQTT_USERNAME")
         mqtt_password = os.getenv("MQTTPASSWORD") or os.getenv("MQTT_PASSWORD")
-        ha_token = os.getenv("HASSIO_TOKEN")  # Token pour l'API HA
+        ha_token = os.getenv("HASSIO_TOKEN")
+        self.logger.debug(
+            f"Token HA récupéré : {'présent' if ha_token else 'absent'}"
+        )  # Log pour vérifier ha_token
 
-        # Récupérer scan_interval et s'assurer qu'il est >= 60 secondes
         scan_interval = config.get("scan_interval", 60)
         if not isinstance(scan_interval, (int, float)) or scan_interval < 60:
             self.logger.warning(
@@ -46,10 +53,10 @@ class YutampoAddon:
             )
             scan_interval = 60
 
-        # Récupérer le préfixe de découverte MQTT, par défaut "homeassistant"
         discovery_prefix = config.get("discovery_prefix", "homeassistant")
+        weather_entity = config.get("weather_entity", "weather.forecast_maison")
+        log_level = config.get("log_level", "DEBUG")
 
-        # Récupérer les préréglages personnalisés
         presets = config.get(
             "presets",
             [
@@ -77,7 +84,6 @@ class YutampoAddon:
             ],
         )
 
-        # Vérifier que les préréglages contiennent les clés requises
         for preset in presets:
             required_keys = [
                 "name",
@@ -102,7 +108,9 @@ class YutampoAddon:
             "mqtt_password": mqtt_password,
             "ha_token": ha_token,
             "presets": presets,
-            "discovery_prefix": discovery_prefix,  # Ajout du préfixe
+            "discovery_prefix": discovery_prefix,
+            "weather_entity": weather_entity,
+            "log_level": log_level,
         }
 
     def start(self):
@@ -151,16 +159,17 @@ class YutampoAddon:
         # Initialisation des entités de réglage (input_select)
         self.mqtt_handler.register_settings_entities(self.config["presets"])
 
-        # Initialisation du client météo
-        self.weather_client = WeatherClient(self.config)
+        # Initialisation du client météo avec MQTT
+        self.weather_client = WeatherClient(self.config, self.mqtt_handler)
+        self.weather_client.subscribe()
 
-        # Initialisation de l'automation interne (on suppose un seul Yutampo physique pour l'instant)
+        # Initialisation de l'automation interne
         if self.devices:
             self.automation_handler = AutomationHandler(
                 self.api_client,
                 self.mqtt_handler,
                 self.virtual_thermostat,
-                self.devices[0],  # Utilise le premier appareil Yutampo détecté
+                self.devices[0],
                 self.weather_client,
                 self.config["presets"],
             )
@@ -181,7 +190,5 @@ class YutampoAddon:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    LOGGER = logging.getLogger("Yutampo_ha_addon")
     addon = YutampoAddon(config_path="/data/options.json")
     addon.start()
