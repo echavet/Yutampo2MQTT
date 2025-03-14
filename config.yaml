@@ -1,5 +1,5 @@
 name: "Yutampo2MQTT HA Addon"
-version: "2.0.2"
+version: "2.0.3"
 slug: "yutampo2mqtt"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet avec automation interne"
 services:
@@ -17,7 +17,9 @@ options:
   username: "ton_username"
   password: "ton_password"
   scan_interval: 300
-  discovery_prefix: "homeassistant"  # Nouvelle option avec valeur par défaut
+  discovery_prefix: "homeassistant"
+  weather_entity: "weather.forecast_maison"  # Par défaut ton entité
+  log_level: "DEBUG"  # Par défaut DEBUG pour le développement
   presets:
     - name: "Hiver"
       target_temperature: 50
@@ -43,7 +45,9 @@ schema:
   username: str
   password: password
   scan_interval: int
-  discovery_prefix: str  # Ajout au schéma
+  discovery_prefix: str
+  weather_entity: str
+  log_level: list(DEBUG|INFO|WARNING|ERROR)  # Liste déroulante dans l’interface
   presets:
     - name: str
       target_temperature: float
