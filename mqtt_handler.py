@@ -8,6 +8,7 @@ class MqttHandler:
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.client = mqtt.Client()
         self.client.on_connect = self._on_connect
+        self.client.on_message = self._on_message
         self.mqtt_host = config["mqtt_host"]
         self.mqtt_port = config["mqtt_port"]
         self.mqtt_user = config["mqtt_user"]
@@ -39,16 +40,20 @@ class MqttHandler:
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.logger.info("Connecté au broker MQTT")
-            self.client.subscribe("yutampo/climate/+/set")
-            self.client.subscribe("yutampo/climate/+/mode/set")
-            self.client.subscribe("yutampo/climate/+/set_temperature")
-            self.client.subscribe("yutampo/climate/+/set_temperature_low")
-            self.client.subscribe("yutampo/climate/+/set_temperature_high")
-            self.client.subscribe("yutampo/input_select/+/set")
+            # Souscriptions déplacées dans subscribe_topics
         else:
             self.logger.error(
                 f"Échec de la connexion au broker MQTT, code de retour : {rc}"
             )
+
+    def subscribe_topics(self):
+        self.client.subscribe("yutampo/climate/+/set")
+        self.client.subscribe("yutampo/climate/+/mode/set")
+        self.client.subscribe("yutampo/climate/+/set_temperature")
+        self.client.subscribe("yutampo/climate/+/set_temperature_low")
+        self.client.subscribe("yutampo/climate/+/set_temperature_high")
+        self.client.subscribe("yutampo/input_select/+/set")
+        self.logger.debug("Souscriptions aux topics MQTT effectuées.")
 
     def _on_message(self, client, userdata, msg):
         self.logger.info(
@@ -69,10 +74,12 @@ class MqttHandler:
                     self.logger.error(f"Device {device_id} inconnu dans DEVICES.")
                     return
 
-                if (
-                    device_id == "yutampo_thermostat_virtual"
-                    and self.virtual_thermostat
-                ):
+                if device_id == "yutampo_thermostat_virtual":
+                    if not self.virtual_thermostat:
+                        self.logger.error(
+                            "Thermostat virtuel non initialisé lors de la réception du message."
+                        )
+                        return
                     if command_part == "set_temperature":
                         new_temp = float(payload)
                         self.virtual_thermostat.set_temperature(new_temp)
@@ -156,7 +163,10 @@ class MqttHandler:
         payload = {
             "name": device.name,
             "unique_id": device.id,
-            "modes": ["off", "heat"],
+            "modes": [
+                "off",
+                "heat",
+            ],  # Le mode "auto" est réservé au thermostat virtuel
             "state_topic": f"yutampo/climate/{device.id}/state",
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
@@ -240,6 +250,7 @@ class MqttHandler:
     def register_virtual_thermostat(self, virtual_thermostat):
         self.virtual_thermostat = virtual_thermostat
         virtual_thermostat.register()
+        self.subscribe_topics()  # Souscriptions après l’initialisation du thermostat virtuel
 
     def register_settings_entities(self, presets):
         input_select_topic = (

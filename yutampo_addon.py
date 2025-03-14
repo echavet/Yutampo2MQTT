@@ -12,13 +12,10 @@ from automation_handler import AutomationHandler
 
 class YutampoAddon:
     def __init__(self, config_path):
-        # Configurer le logging dès le début avec un niveau temporaire
         logging.basicConfig(level=logging.DEBUG)
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.config = self._load_config(config_path)
-        # Appliquer le niveau de log configuré
-        log_level = self.config.get("log_level", "DEBUG")
-        logging.getLogger().setLevel(getattr(logging, log_level.upper()))
+        logging.getLogger().setLevel(getattr(logging, self.config["log_level"].upper()))
         self.logger.debug(f"Config initiale : {self.config}")
         self.api_client = ApiClient(self.config)
         self.mqtt_handler = MqttHandler(self.config, api_client=self.api_client)
@@ -42,9 +39,7 @@ class YutampoAddon:
         mqtt_user = os.getenv("MQTTUSER") or os.getenv("MQTT_USERNAME")
         mqtt_password = os.getenv("MQTTPASSWORD") or os.getenv("MQTT_PASSWORD")
         ha_token = os.getenv("HASSIO_TOKEN")
-        self.logger.debug(
-            f"Token HA récupéré : {'présent' if ha_token else 'absent'}"
-        )  # Log pour vérifier ha_token
+        self.logger.debug(f"Token HA récupéré : {'présent' if ha_token else 'absent'}")
 
         scan_interval = config.get("scan_interval", 60)
         if not isinstance(scan_interval, (int, float)) or scan_interval < 60:
@@ -152,18 +147,14 @@ class YutampoAddon:
 
         self.scheduler.schedule_updates(self.devices, self.config["scan_interval"])
 
-        # Initialisation du thermostat virtuel
         self.virtual_thermostat = VirtualThermostat(self.mqtt_handler)
         self.mqtt_handler.register_virtual_thermostat(self.virtual_thermostat)
 
-        # Initialisation des entités de réglage (input_select)
         self.mqtt_handler.register_settings_entities(self.config["presets"])
 
-        # Initialisation du client météo avec MQTT
-        self.weather_client = WeatherClient(self.config, self.mqtt_handler)
-        self.weather_client.subscribe()
+        self.weather_client = WeatherClient(self.config)
+        self.weather_client.start()
 
-        # Initialisation de l'automation interne
         if self.devices:
             self.automation_handler = AutomationHandler(
                 self.api_client,
@@ -185,6 +176,7 @@ class YutampoAddon:
         except (KeyboardInterrupt, SystemExit):
             self.scheduler.shutdown()
             self.automation_handler.scheduler.shutdown()
+            self.weather_client.shutdown()
             self.mqtt_handler.disconnect()
             self.logger.info("Arrêt du programme.")
 

@@ -39,6 +39,12 @@ class AutomationHandler:
 
     def _run_automation(self):
         self.logger.debug("Exécution de l'automation interne...")
+        if self.virtual_thermostat.mode != "auto":
+            self.logger.debug(
+                f"Mode {self.virtual_thermostat.mode} actif, optimisation désactivée."
+            )
+            return
+
         hottest_hour = self.weather_client.get_hottest_hour()
         start_hour = hottest_hour - (self.heating_duration / 2)
         end_hour = hottest_hour + (self.heating_duration / 2)
@@ -116,6 +122,5 @@ class AutomationHandler:
                 self.logger.info(
                     f"Action utilisateur : Préréglage saisonnier mis à jour : {self.season_preset}, durée de variation : {self.heating_duration} heures"
                 )
-                # Les logs supplémentaires sont gérés par set_temperature/set_temperature_low/set_temperature_high
                 return
         self.logger.warning(f"Préréglage inconnu : {preset_name}")

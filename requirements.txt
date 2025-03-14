@@ -1,5 +1,7 @@
+# ce fichier n'est pas utilisé par cet addon mais il est maintenu pour information
 requests
 beautifulsoup4
 voluptuous
 apscheduler
 paho-mqtt
+aiohttp
