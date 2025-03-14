@@ -46,6 +46,9 @@ class YutampoAddon:
             )
             scan_interval = 60
 
+        # Récupérer le préfixe de découverte MQTT, par défaut "homeassistant"
+        discovery_prefix = config.get("discovery_prefix", "homeassistant")
+
         # Récupérer les préréglages personnalisés
         presets = config.get(
             "presets",
@@ -99,6 +102,7 @@ class YutampoAddon:
             "mqtt_password": mqtt_password,
             "ha_token": ha_token,
             "presets": presets,
+            "discovery_prefix": discovery_prefix,  # Ajout du préfixe
         }
 
     def start(self):
@@ -158,7 +162,7 @@ class YutampoAddon:
                 self.virtual_thermostat,
                 self.devices[0],  # Utilise le premier appareil Yutampo détecté
                 self.weather_client,
-                self.config["presets"],  # Injection des préréglages complets
+                self.config["presets"],
             )
             self.mqtt_handler.automation_handler = self.automation_handler
             self.automation_handler.start()
@@ -177,7 +181,6 @@ class YutampoAddon:
 
 
 if __name__ == "__main__":
-    # Ce bloc est normalement dans main.py, mais inclus ici pour référence
     logging.basicConfig(level=logging.DEBUG)
     LOGGER = logging.getLogger("Yutampo_ha_addon")
     addon = YutampoAddon(config_path="/data/options.json")
