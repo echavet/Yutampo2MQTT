@@ -152,7 +152,7 @@ class YutampoAddon:
 
         self.mqtt_handler.register_settings_entities(self.config["presets"])
 
-        self.weather_client = WeatherClient(self.config)
+        self.weather_client = WeatherClient(self.config, self.automation_handler)
         self.weather_client.start()
 
         if self.devices:
