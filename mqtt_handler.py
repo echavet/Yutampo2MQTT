@@ -40,7 +40,6 @@ class MqttHandler:
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.logger.info("Connecté au broker MQTT")
-            # Souscriptions déplacées dans subscribe_topics
         else:
             self.logger.error(
                 f"Échec de la connexion au broker MQTT, code de retour : {rc}"
@@ -91,7 +90,14 @@ class MqttHandler:
                         self.virtual_thermostat.set_temperature_high(new_temp_high)
                     elif command_part == "set_mode":
                         new_mode = payload
+                        self.logger.debug(
+                            f"Tentative de changement de mode vers : {new_mode}"
+                        )
                         self.virtual_thermostat.set_mode(new_mode)
+                    else:
+                        self.logger.warning(
+                            f"Commande inconnue pour thermostat virtuel : {command_part}"
+                        )
                 else:
                     device = self.devices[device_id]
                     parent_id = device.parent_id
@@ -163,10 +169,7 @@ class MqttHandler:
         payload = {
             "name": device.name,
             "unique_id": device.id,
-            "modes": [
-                "off",
-                "heat",
-            ],  # Le mode "auto" est réservé au thermostat virtuel
+            "modes": ["off", "heat"],
             "state_topic": f"yutampo/climate/{device.id}/state",
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
@@ -250,7 +253,7 @@ class MqttHandler:
     def register_virtual_thermostat(self, virtual_thermostat):
         self.virtual_thermostat = virtual_thermostat
         virtual_thermostat.register()
-        self.subscribe_topics()  # Souscriptions après l’initialisation du thermostat virtuel
+        self.subscribe_topics()
 
     def register_settings_entities(self, presets):
         input_select_topic = (
