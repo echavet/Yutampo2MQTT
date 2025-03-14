@@ -1,7 +1,7 @@
 name: "Yutampo2MQTT HA Addon"
 version: "1.0"
 slug: "yutampo2mqtt"
-description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet"
+description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet avec automation interne"
 services:
   - mqtt:need
 arch:
@@ -17,21 +17,28 @@ options:
   username: "ton_username"
   password: "ton_password"
   scan_interval: 300
-
+  preset_durations:
+    Hiver: 6
+    "Printemps/Automne": 5
+    Été: 4
   mqtt_host: "<auto_detect>"
   mqtt_port: "<auto_detect>"
   mqtt_user: "<auto_detect>"
   mqtt_password: "<auto_detect>"
-  
+
 schema:
   username: str
   password: password
   scan_interval: int
+  preset_durations:
+    Hiver: int
+    "Printemps/Automne": int
+    Été: int
   mqtt_host: str
   mqtt_port: str
   mqtt_user: str
   mqtt_password: str
-  
+
 map:
   - addon_config:rw
 mqtt: true
