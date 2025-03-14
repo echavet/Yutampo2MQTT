@@ -10,7 +10,7 @@ class VirtualThermostat:
         self.target_temperature = 45.0
         self.target_temperature_low = 41.0
         self.target_temperature_high = 49.0
-        self.mode = "heat"
+        self.mode = "auto"  # Mode par défaut changé à "auto"
         self.min_temp = 20
         self.max_temp = 60
 
@@ -34,7 +34,7 @@ class VirtualThermostat:
             "min_temp": self.min_temp,
             "max_temp": self.max_temp,
             "temp_step": 0.5,
-            "modes": ["heat"],
+            "modes": ["off", "heat", "auto"],  # Ajout des nouveaux modes
             "mode_command_topic": f"yutampo/climate/{self.device_id}/set_mode",
             "mode_state_topic": f"yutampo/climate/{self.device_id}/state",
             "mode_state_template": "{{ value_json.mode }}",
@@ -88,6 +88,7 @@ class VirtualThermostat:
             f"Action utilisateur : Consigne cible mise à jour à {self.target_temperature}°C"
         )
         self._log_weather_info()
+        self._apply_mode_to_physical_device()
         self.publish_state()
 
     def set_temperature_low(self, temperature_low):
@@ -101,6 +102,7 @@ class VirtualThermostat:
             f"Action utilisateur : Température basse mise à jour à {self.target_temperature_low}°C"
         )
         self._log_weather_info()
+        self._apply_mode_to_physical_device()
         self.publish_state()
 
     def set_temperature_high(self, temperature_high):
@@ -114,15 +116,44 @@ class VirtualThermostat:
             f"Action utilisateur : Température haute mise à jour à {self.target_temperature_high}°C"
         )
         self._log_weather_info()
+        self._apply_mode_to_physical_device()
         self.publish_state()
 
     def set_mode(self, mode):
-        if mode in ["heat"]:
-            self.mode = mode
-            self.logger.info(f"Action utilisateur : Mode mis à jour à {self.mode}")
-            self.publish_state()
-        else:
+        if mode not in ["off", "heat", "auto"]:
             self.logger.warning(f"Mode non supporté reçu : {mode}")
+            return
+        self.mode = mode
+        self.logger.info(f"Action utilisateur : Mode mis à jour à {self.mode}")
+        self._apply_mode_to_physical_device()
+        self.publish_state()
+
+    def _apply_mode_to_physical_device(self):
+        """Applique le mode au chauffe-eau physique si disponible."""
+        if (
+            not hasattr(self.mqtt_handler, "automation_handler")
+            or not self.mqtt_handler.automation_handler
+        ):
+            self.logger.debug(
+                "AutomationHandler non disponible, pas d'application au chauffe-eau physique."
+            )
+            return
+        physical_device = self.mqtt_handler.automation_handler.physical_device
+        if self.mode == "off":
+            self.mqtt_handler.api_client.set_heat_setting(
+                physical_device.parent_id, run_stop_dhw=0
+            )
+            self.logger.info("Chauffe-eau physique arrêté (mode off).")
+        elif self.mode == "heat":
+            self.mqtt_handler.api_client.set_heat_setting(
+                physical_device.parent_id,
+                run_stop_dhw=1,
+                setting_temp_dhw=self.target_temperature,
+            )
+            self.logger.info(
+                f"Chauffe-eau physique en mode heat avec consigne {self.target_temperature}°C."
+            )
+        # Mode "auto" est géré par AutomationHandler, pas d’action immédiate ici
 
     def _log_weather_info(self):
         if (
