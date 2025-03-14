@@ -21,18 +21,16 @@ class AutomationHandler:
         self.physical_device = physical_device
         self.weather_client = weather_client
         self.scheduler = BackgroundScheduler()
-        self.presets = presets  # Liste des préréglages personnalisés
-        self.season_preset = self.presets[0]["name"]  # Premier préréglage par défaut
-        self.heating_duration = self.presets[0]["duration"]  # Durée initiale
+        self.presets = presets
+        self.season_preset = self.presets[0]["name"]
+        self.heating_duration = self.presets[0]["duration"]
 
     def start(self):
-        """Démarre l'automation interne."""
         self._schedule_automation()
         self.scheduler.start()
         self.logger.info("Automation interne démarrée.")
 
     def _schedule_automation(self):
-        """Planifie l'exécution de l'automation toutes les 5 minutes."""
         self.scheduler.add_job(
             self._run_automation,
             trigger=IntervalTrigger(minutes=5),
@@ -40,7 +38,6 @@ class AutomationHandler:
         )
 
     def _run_automation(self):
-        """Exécute la logique de contrôle graduel."""
         self.logger.debug("Exécution de l'automation interne...")
         hottest_hour = self.weather_client.get_hottest_hour()
         start_hour = hottest_hour - (self.heating_duration / 2)
@@ -49,44 +46,45 @@ class AutomationHandler:
         current_time = datetime.now()
         current_hour = current_time.hour + current_time.minute / 60.0
 
-        # Ajuster les heures pour gérer les transitions de minuit
         if start_hour < 0:
             start_hour += 24
         if end_hour >= 24:
             end_hour -= 24
 
-        # Récupérer les paramètres du thermostat virtuel
         c = self.virtual_thermostat.target_temperature
         temp_min = self.virtual_thermostat.target_temperature_low
         temp_max = self.virtual_thermostat.target_temperature_high
-        a_min = c - temp_min  # Amplitude vers le bas
-        a_max = temp_max - c  # Amplitude vers le haut
+        a_min = c - temp_min
+        a_max = temp_max - c
+
+        # Logs pour l'heure la plus chaude, la plage active et la température par défaut
+        self.logger.info(f"Heure la plus chaude : {hottest_hour:.2f}h")
+        self.logger.info(
+            f"Plage active du chauffage : {start_hour:.2f}h - {end_hour:.2f}h"
+        )
+        self.logger.info(
+            f"Température par défaut en dehors de la plage : {temp_min:.1f}°C"
+        )
 
         if (current_hour >= start_hour and current_hour < end_hour) or (
             start_hour > end_hour
             and (current_hour >= start_hour or current_hour < end_hour)
         ):
-            # Calculer la progression dans la plage de variation
             if current_hour >= start_hour:
                 progress = (current_hour - start_hour) / self.heating_duration
             else:
                 progress = (current_hour + 24 - start_hour) / self.heating_duration
 
-            # Interpolation en deux étapes pour gérer l'asymétrie
             if progress <= 0.5:
-                # De temp_min à c
                 target_temp = temp_min + (c - temp_min) * (progress / 0.5)
             else:
-                # De c à temp_max
                 target_temp = c + (temp_max - c) * ((progress - 0.5) / 0.5)
         else:
-            # En dehors de la plage, utiliser la borne basse
             target_temp = temp_min
 
         target_temp = round(target_temp, 1)
         self.logger.debug(f"Consigne calculée pour le Yutampo : {target_temp}°C")
 
-        # Appliquer la consigne au Yutampo physique
         if self.api_client.set_heat_setting(
             self.physical_device.parent_id, setting_temp_dhw=target_temp
         ):
@@ -105,7 +103,6 @@ class AutomationHandler:
             )
 
     def set_season_preset(self, preset_name):
-        """Met à jour le préréglage saisonnier et applique les paramètres correspondants."""
         for preset in self.presets:
             if preset["name"] == preset_name:
                 self.season_preset = preset_name
@@ -119,6 +116,21 @@ class AutomationHandler:
                 )
                 self.logger.info(
                     f"Préréglage saisonnier mis à jour : {self.season_preset}, durée de variation : {self.heating_duration} heures"
+                )
+                # Logs supplémentaires après changement de préréglage
+                hottest_hour = self.weather_client.get_hottest_hour()
+                start_hour = hottest_hour - (self.heating_duration / 2)
+                end_hour = hottest_hour + (self.heating_duration / 2)
+                if start_hour < 0:
+                    start_hour += 24
+                if end_hour >= 24:
+                    end_hour -= 24
+                self.logger.info(f"Heure la plus chaude : {hottest_hour:.2f}h")
+                self.logger.info(
+                    f"Plage active du chauffage : {start_hour:.2f}h - {end_hour:.2f}h"
+                )
+                self.logger.info(
+                    f"Température par défaut en dehors de la plage : {self.virtual_thermostat.target_temperature_low:.1f}°C"
                 )
                 return
         self.logger.warning(f"Préréglage inconnu : {preset_name}")
