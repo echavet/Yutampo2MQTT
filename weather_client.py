@@ -32,6 +32,7 @@ class WeatherClient:
         self.ws_thread = None
         self.message_id = 1
         self.connected = False
+        self._last_hottest_temp = None  # Initialiser la dernière température
 
     def _get_default_hottest_hour(self):
         """Récupère l’heure la plus chaude par défaut depuis le preset actif."""
@@ -82,12 +83,11 @@ class WeatherClient:
         self.logger.info("Connexion WebSocket ouverte.")
 
     def _on_message(self, ws, message):
-        """Traite les messages reçus via WebSocket."""
         try:
             data = json.loads(message)
             self.logger.verbose(
                 f"Message WebSocket reçu : {json.dumps(data, indent=2)}"
-            )  # VERBOSE
+            )
             if data.get("type") == "auth_required":
                 ws.send(json.dumps({"type": "auth", "access_token": self.ha_token}))
                 self.logger.debug("Envoi du token d’authentification.")
@@ -140,7 +140,6 @@ class WeatherClient:
         self.message_id += 1
 
     def _parse_forecast(self, forecast):
-        """Parse les données de prévision pour trouver l’heure la plus chaude."""
         if not forecast:
             self.logger.error(
                 f"Prévisions vides pour {self.weather_entity}. Utilisation de l’heure par défaut."
@@ -155,15 +154,23 @@ class WeatherClient:
             temp = entry.get("temperature", float("-inf"))
             dt = datetime.strptime(entry["datetime"], "%Y-%m-%dT%H:%M:%S%z")
             hour = dt.hour + dt.minute / 60.0
-            self.logger.verbose(f"Prévision : {dt} -> {temp}°C")  # VERBOSE
+            self.logger.verbose(f"Prévision : {dt} -> {temp}°C")
             if temp > hottest_temp:
                 hottest_temp = temp
                 hottest_hour = hour
 
-        self.hottest_hour = hottest_hour
-        self.logger.info(
-            f"Heure la plus chaude mise à jour via WebSocket HA : {self.hottest_hour:.2f}h avec {hottest_temp}°C"
-        )
+        if hottest_hour != self.hottest_hour or hottest_temp != self._last_hottest_temp:
+            self.hottest_hour = hottest_hour
+            self._last_hottest_temp = (
+                hottest_temp  # Ajouter un attribut pour suivre la dernière temp
+            )
+            self.logger.info(
+                f"Heure la plus chaude mise à jour via WebSocket HA : {self.hottest_hour:.2f}h avec {hottest_temp}°C"
+            )
+        else:
+            self.logger.debug(
+                f"Heure la plus chaude inchangée : {self.hottest_hour:.2f}h avec {hottest_temp}°C"
+            )
 
     def get_hottest_hour(self):
         return self.hottest_hour
