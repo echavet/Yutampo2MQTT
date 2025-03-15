@@ -39,6 +39,26 @@ class AutomationHandler:
             next_run_time=datetime.now() + timedelta(seconds=5),
         )
 
+    def set_season_preset(self, preset_name):
+        """Met à jour le preset saisonnier actif et synchronise le Climate Virtuel."""
+        if preset_name not in [p["name"] for p in self.presets]:
+            self.logger.warning(
+                f"Preset {preset_name} non trouvé dans la liste des presets."
+            )
+            return
+        self.season_preset = preset_name
+        for preset in self.presets:
+            if preset["name"] == preset_name:
+                self.heating_duration = preset["duration"]
+                self.logger.info(
+                    f"Preset saisonnier mis à jour : {preset_name}, duration={self.heating_duration}"
+                )
+                # Synchroniser les paramètres du Climate Virtuel
+                self.virtual_thermostat.sync_preset_parameters(
+                    preset_name, self.presets
+                )
+                break
+
     def _run_automation(self):
         self.logger.debug("Exécution de l'automation interne...")
         if self.virtual_thermostat.mode != "auto":

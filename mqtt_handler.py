@@ -159,7 +159,9 @@ class MqttHandler:
                     if new_preset in [
                         p["name"] for p in self.automation_handler.presets
                     ]:
-                        self.automation_handler.set_season_preset(new_preset)
+                        self.automation_handler.set_season_preset(
+                            new_preset
+                        )  # Appel corrigé
                         self.publish_input_select_state(device_id, new_preset)
                     else:
                         self.logger.warning(f"Préréglage inconnu : {new_preset}")

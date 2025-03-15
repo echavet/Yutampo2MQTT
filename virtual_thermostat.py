@@ -233,6 +233,19 @@ class VirtualThermostat:
                         self.current_temperature = (
                             physical_device.current_temperature
                         )  # Synchroniser avec le virtuel
+
+                        # Vérifier et synchroniser le mode du Climate Virtuel
+                        expected_mode = (
+                            "off" if physical_device.mode == "off" else self.mode
+                        )
+                        if self.mode != expected_mode:
+                            self.logger.warning(
+                                f"Incohérence du mode détectée : Climate Virtuel={self.mode}, Physique={physical_device.mode}. "
+                                f"Synchronisation vers {expected_mode}."
+                            )
+                            self.mode = expected_mode
+                            self.publish_state()
+
                         self.logger.info(
                             f"État synchronisé immédiatement : consigne={physical_device.setting_temperature}, "
                             f"actuel={physical_device.current_temperature}, mode={physical_device.mode}, "
@@ -281,3 +294,22 @@ class VirtualThermostat:
             self.logger.info(
                 f"Température par défaut en dehors de la plage : {self.target_temperature_low:.1f}°C"
             )
+
+    def sync_preset_parameters(self, preset_name, presets):
+        """Synchronise les paramètres du Climate Virtuel avec le preset actif."""
+        for preset in presets:
+            if preset["name"] == preset_name:
+                self.target_temperature = preset["target_temperature"]
+                self.target_temperature_low = preset["target_temperature_low"]
+                self.target_temperature_high = preset["target_temperature_high"]
+                self.logger.info(
+                    f"Paramètres du Climate Virtuel synchronisés avec le preset {preset_name} : "
+                    f"target_temperature={self.target_temperature}, "
+                    f"target_temperature_low={self.target_temperature_low}, "
+                    f"target_temperature_high={self.target_temperature_high}"
+                )
+                self.publish_state()
+                return
+        self.logger.warning(
+            f"Preset {preset_name} non trouvé dans la liste des presets."
+        )
