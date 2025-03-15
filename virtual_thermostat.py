@@ -181,6 +181,7 @@ class VirtualThermostat:
         if (
             hasattr(self.mqtt_handler, "automation_handler")
             and self.mqtt_handler.automation_handler
+            and self.mqtt_handler.automation_handler.weather_client
         ):
             hottest_hour = (
                 self.mqtt_handler.automation_handler.weather_client.get_hottest_hour()

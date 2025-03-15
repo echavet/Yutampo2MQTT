@@ -1,5 +1,5 @@
 name: "Yutampo2MQTT HA Addon"
-version: "2.1.4"
+version: "2.1.5"
 slug: "yutampo2mqtt"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet avec automation interne"
 services:
@@ -50,7 +50,7 @@ schema:
   scan_interval: int
   discovery_prefix: str
   weather_entity: str
-  log_level: str  # Validation dans le code : VERBOSE, DEBUG, INFO, WARNING, ERROR
+  log_level: list(VERBOSE|DEBUG|INFO|WARNING|ERROR)  # Validation stricte ici
   presets:
     - name: str
       target_temperature: float
