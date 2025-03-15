@@ -36,10 +36,13 @@ class WeatherClient:
 
     def _get_default_hottest_hour(self):
         """Récupère l’heure la plus chaude par défaut depuis le preset actif."""
-        if self.automation_handler and self.automation_handler.current_preset:
-            preset = self.automation_handler.current_preset
-            return preset.get("hottest_hour", 15)  # Fallback à 15h si non spécifié
-        return 15
+        if self.automation_handler:
+            for preset in self.automation_handler.presets:
+                if preset["name"] == self.automation_handler.season_preset:
+                    return preset.get(
+                        "hottest_hour", 15
+                    )  # Fallback à 15h si non spécifié
+        return 15  # Fallback si automation_handler n’est pas encore défini
 
     def start(self):
         """Démarre le scheduler et la connexion WebSocket."""
