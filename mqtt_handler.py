@@ -46,12 +46,15 @@ class MqttHandler:
             )
 
     def subscribe_topics(self):
-        self.client.subscribe("yutampo/climate/+/set")
-        self.client.subscribe("yutampo/climate/+/mode/set")
-        self.client.subscribe("yutampo/climate/+/set_temperature")
-        self.client.subscribe("yutampo/climate/+/set_temperature_low")
-        self.client.subscribe("yutampo/climate/+/set_temperature_high")
-        self.client.subscribe("yutampo/input_select/+/set")
+        topics = [
+            f"yutampo/climate/{self.virtual_thermostat.device_id}/set_temperature",
+            f"yutampo/climate/{self.virtual_thermostat.device_id}/set_temperature_low",
+            f"yutampo/climate/{self.virtual_thermostat.device_id}/set_temperature_high",
+            f"yutampo/climate/{self.virtual_thermostat.device_id}/set_mode",
+            "yutampo/input_select/yutampo_season_preset/set",
+        ]
+        for topic in topics:
+            self.client.subscribe(topic)
         self.logger.debug("Souscriptions aux topics MQTT effectuées.")
 
     def _on_message(self, client, userdata, msg):
