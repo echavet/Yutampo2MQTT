@@ -12,10 +12,8 @@ class WeatherClient:
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.weather_entity = config["weather_entity"]
         self.ha_token = config["ha_token"]
-        self.automation_handler = automation_handler  # Pour récupérer le preset actif
-        self.hottest_hour = (
-            self._get_default_hottest_hour()
-        )  # Valeur par défaut initiale
+        self.automation_handler = automation_handler
+        self.hottest_hour = self._get_default_hottest_hour()
         self.scheduler = BackgroundScheduler()
         self.ws_url = "ws://supervisor/core/websocket"
         self.ws = None
@@ -59,7 +57,6 @@ class WeatherClient:
             self.ws_thread.daemon = True
             self.ws_thread.start()
             self.logger.info("Connexion WebSocket démarrée.")
-            # Attendre que la connexion soit établie
             for _ in range(10):  # 10 tentatives max (5 secondes)
                 if self.connected:
                     break
@@ -83,8 +80,16 @@ class WeatherClient:
             elif data.get("type") == "auth_ok":
                 self.logger.info("Authentification WebSocket réussie.")
                 self._request_forecast()
-            elif data.get("type") == "result" and "forecast" in data.get("result", {}):
-                self._parse_forecast(data["result"]["forecast"])
+            elif data.get("type") == "result":
+                # Ignorer les messages "result" avec result: null
+                if data.get("success") and data.get("result") is None:
+                    self.logger.debug(
+                        "Message 'result' reçu avec result: null, souscription confirmée."
+                    )
+                else:
+                    self.logger.debug("Message 'result' inattendu, ignoré.")
+            elif data.get("type") == "event" and "forecast" in data.get("event", {}):
+                self._parse_forecast(data["event"]["forecast"])
         except Exception as e:
             self.logger.error(
                 f"Erreur lors du traitement du message WebSocket : {str(e)}"
