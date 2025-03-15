@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 
 class VirtualThermostat:
@@ -89,6 +90,13 @@ class VirtualThermostat:
         )
         self._log_weather_info()
         self._apply_mode_to_physical_device()
+        if (
+            hasattr(self.mqtt_handler, "automation_handler")
+            and self.mqtt_handler.automation_handler
+        ):
+            self.mqtt_handler.automation_handler.last_user_update = (
+                time.time()
+            )  # Signaler le changement
         self.publish_state()
 
     def set_temperature_low(self, temperature_low):
@@ -126,6 +134,13 @@ class VirtualThermostat:
         self.mode = mode
         self.logger.info(f"Action utilisateur : Mode mis à jour à {self.mode}")
         self._apply_mode_to_physical_device()
+        if (
+            hasattr(self.mqtt_handler, "automation_handler")
+            and self.mqtt_handler.automation_handler
+        ):
+            self.mqtt_handler.automation_handler.last_user_update = (
+                time.time()
+            )  # Signaler le changement
         self.publish_state()
 
     def _apply_mode_to_physical_device(self):

@@ -1,9 +1,3 @@
-import logging
-from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-
-
 class AutomationHandler:
     def __init__(
         self,
@@ -24,18 +18,7 @@ class AutomationHandler:
         self.presets = presets
         self.season_preset = self.presets[0]["name"]
         self.heating_duration = self.presets[0]["duration"]
-
-    def start(self):
-        self._schedule_automation()
-        self.scheduler.start()
-        self.logger.info("Automation interne démarrée.")
-
-    def _schedule_automation(self):
-        self.scheduler.add_job(
-            self._run_automation,
-            trigger=IntervalTrigger(minutes=5),
-            next_run_time=datetime.now() + timedelta(seconds=5),
-        )
+        self.last_user_update = None  # Timestamp de la dernière mise à jour utilisateur
 
     def _run_automation(self):
         self.logger.debug("Exécution de l'automation interne...")
@@ -45,7 +28,11 @@ class AutomationHandler:
             )
             return
 
-        hottest_hour = self.weather_client.get_hottest_hour()
+        hottest_hour = (
+            self.weather_client.get_hottest_hour()
+            if self.weather_client
+            else self.presets[0]["hottest_hour"]
+        )
         start_hour = hottest_hour - (self.heating_duration / 2)
         end_hour = hottest_hour + (self.heating_duration / 2)
 
@@ -60,8 +47,6 @@ class AutomationHandler:
         c = self.virtual_thermostat.target_temperature
         temp_min = self.virtual_thermostat.target_temperature_low
         temp_max = self.virtual_thermostat.target_temperature_high
-        a_min = c - temp_min
-        a_max = temp_max - c
 
         self.logger.info(f"Heure la plus chaude : {hottest_hour:.2f}h")
         self.logger.info(
@@ -71,21 +56,28 @@ class AutomationHandler:
             f"Température par défaut en dehors de la plage : {temp_min:.1f}°C"
         )
 
-        if (current_hour >= start_hour and current_hour < end_hour) or (
-            start_hour > end_hour
-            and (current_hour >= start_hour or current_hour < end_hour)
-        ):
-            if current_hour >= start_hour:
-                progress = (current_hour - start_hour) / self.heating_duration
-            else:
-                progress = (current_hour + 24 - start_hour) / self.heating_duration
-
-            if progress <= 0.5:
-                target_temp = temp_min + (c - temp_min) * (progress / 0.5)
-            else:
-                target_temp = c + (temp_max - c) * ((progress - 0.5) / 0.5)
+        # Prioriser la consigne utilisateur pendant 15 minutes
+        if self.last_user_update and (time.time() - self.last_user_update < 15 * 60):
+            target_temp = c
+            self.logger.info(
+                f"Utilisation de la consigne utilisateur : {target_temp}°C"
+            )
         else:
-            target_temp = temp_min
+            if (current_hour >= start_hour and current_hour < end_hour) or (
+                start_hour > end_hour
+                and (current_hour >= start_hour or current_hour < end_hour)
+            ):
+                if current_hour >= start_hour:
+                    progress = (current_hour - start_hour) / self.heating_duration
+                else:
+                    progress = (current_hour + 24 - start_hour) / self.heating_duration
+
+                if progress <= 0.5:
+                    target_temp = temp_min + (c - temp_min) * (progress / 0.5)
+                else:
+                    target_temp = c + (temp_max - c) * ((progress - 0.5) / 0.5)
+            else:
+                target_temp = temp_min
 
         target_temp = round(target_temp, 1)
         self.logger.debug(f"Consigne calculée pour le Yutampo : {target_temp}°C")
@@ -119,6 +111,7 @@ class AutomationHandler:
                 self.virtual_thermostat.set_temperature_high(
                     preset["target_temperature_high"]
                 )
+                self.last_user_update = time.time()  # Mettre à jour le timestamp
                 self.logger.info(
                     f"Action utilisateur : Préréglage saisonnier mis à jour : {self.season_preset}, durée de variation : {self.heating_duration} heures"
                 )

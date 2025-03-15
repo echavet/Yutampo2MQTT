@@ -200,23 +200,26 @@ class YutampoAddon:
 
         self.mqtt_handler.register_settings_entities(self.config["presets"])
 
-        self.weather_client = WeatherClient(self.config, self.automation_handler)
-        self.weather_client.start()
-
         if self.devices:
             self.automation_handler = AutomationHandler(
                 self.api_client,
                 self.mqtt_handler,
                 self.virtual_thermostat,
                 self.devices[0],
-                self.weather_client,
+                None,  # WeatherClient pas encore initialisé
                 self.config["presets"],
             )
             self.mqtt_handler.automation_handler = self.automation_handler
+
+        self.weather_client = WeatherClient(self.config, self.automation_handler)
+        self.weather_client.start()
+
+        if self.devices:
+            self.automation_handler.weather_client = self.weather_client
             self.automation_handler.start()
 
         self.logger.info(
-            "Le planificateur et l'automation interne sont en cours d'exécution. Appuyez sur Ctrl+C pour arrêter."
+            "Le planificateur et l’automation interne sont en cours d’exécution. Appuyez sur Ctrl+C pour arrêter."
         )
         try:
             while True:
