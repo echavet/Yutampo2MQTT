@@ -76,28 +76,21 @@ class VirtualThermostat:
         self.logger.debug(f"Disponibilité publiée pour {self.device_id}: {state}")
 
     def set_temperature(self, temperature):
-        if not (self.min_temp <= temperature <= self.max_temp):
-            self.logger.warning(
-                f"Température cible {temperature} hors plage [{self.min_temp}-{self.max_temp}]"
+        try:
+            temp = float(temperature)
+            self.logger.info(
+                f"Action utilisateur : Nouvelle consigne définie à {temp}°C"
             )
-            return
-        self.target_temperature = temperature
-        amplitude = (self.target_temperature_high - self.target_temperature_low) / 2
-        self.target_temperature_low = max(self.min_temp, temperature - amplitude)
-        self.target_temperature_high = min(self.max_temp, temperature + amplitude)
-        self.logger.info(
-            f"Action utilisateur : Consigne cible mise à jour à {self.target_temperature}°C"
-        )
-        self._log_weather_info()
-        self._apply_mode_to_physical_device()
-        if (
-            hasattr(self.mqtt_handler, "automation_handler")
-            and self.mqtt_handler.automation_handler
-        ):
-            self.mqtt_handler.automation_handler.last_user_update = (
-                time.time()
-            )  # Signaler le changement
-        self.publish_state()
+            self.target_temperature = temp
+            self._apply_to_physical_device()
+            if (
+                hasattr(self.mqtt_handler, "automation_handler")
+                and self.mqtt_handler.automation_handler
+            ):
+                self.mqtt_handler.automation_handler.last_user_update = time.time()
+            self.publish_state()
+        except ValueError:
+            self.logger.error(f"Consigne invalide reçue : {temperature}")
 
     def set_temperature_low(self, temperature_low):
         if not (self.min_temp <= temperature_low <= self.target_temperature):
@@ -131,20 +124,17 @@ class VirtualThermostat:
         if mode not in ["off", "heat", "auto"]:
             self.logger.warning(f"Mode non supporté reçu : {mode}")
             return
+        self.logger.info(f"Action utilisateur : Changement de mode vers {mode}")
         self.mode = mode
-        self.logger.info(f"Action utilisateur : Mode mis à jour à {self.mode}")
-        self._apply_mode_to_physical_device()
+        self._apply_to_physical_device()
         if (
             hasattr(self.mqtt_handler, "automation_handler")
             and self.mqtt_handler.automation_handler
         ):
-            self.mqtt_handler.automation_handler.last_user_update = (
-                time.time()
-            )  # Signaler le changement
+            self.mqtt_handler.automation_handler.last_user_update = time.time()
         self.publish_state()
 
-    def _apply_mode_to_physical_device(self):
-        """Applique le mode au chauffe-eau physique si disponible."""
+    def _apply_to_physical_device(self):
         if (
             not hasattr(self.mqtt_handler, "automation_handler")
             or not self.mqtt_handler.automation_handler
@@ -155,27 +145,40 @@ class VirtualThermostat:
             return
         physical_device = self.mqtt_handler.automation_handler.physical_device
         if self.mode == "off":
-            self.mqtt_handler.api_client.set_heat_setting(
+            success = self.mqtt_handler.api_client.set_heat_setting(
                 physical_device.parent_id, run_stop_dhw=0
             )
-            self.logger.info("Chauffe-eau physique arrêté (mode off).")
+            if success:
+                self.logger.info("Chauffe-eau physique arrêté (mode OFF)")
+            else:
+                self.logger.error("Échec de l'arrêt du chauffe-eau physique")
         elif self.mode == "heat":
-            self.mqtt_handler.api_client.set_heat_setting(
+            success = self.mqtt_handler.api_client.set_heat_setting(
                 physical_device.parent_id,
                 run_stop_dhw=1,
                 setting_temp_dhw=self.target_temperature,
             )
-            self.logger.info(
-                f"Chauffe-eau physique en mode heat avec consigne {self.target_temperature}°C."
-            )
-        elif self.mode == "auto":
-            # Vérifie si le physique est éteint, et rallume si nécessaire
-            if physical_device.mode == "off":
-                self.mqtt_handler.api_client.set_heat_setting(
-                    physical_device.parent_id, run_stop_dhw=1
+            if success:
+                self.logger.info(
+                    f"Chauffe-eau physique en mode HEAT avec consigne {self.target_temperature}°C"
                 )
-                self.logger.info("Chauffe-eau physique rallumé pour mode auto.")
-            # L’optimisation est gérée par AutomationHandler
+            else:
+                self.logger.error("Échec de la mise en marche du chauffe-eau physique")
+        elif self.mode == "auto":
+            # Appliquer immédiatement la consigne utilisateur en mode AUTO
+            success = self.mqtt_handler.api_client.set_heat_setting(
+                physical_device.parent_id,
+                run_stop_dhw=1,
+                setting_temp_dhw=self.target_temperature,
+            )
+            if success:
+                self.logger.info(
+                    f"Chauffe-eau physique en mode AUTO avec consigne initiale {self.target_temperature}°C"
+                )
+            else:
+                self.logger.error(
+                    "Échec de la mise à jour du chauffe-eau physique en mode AUTO"
+                )
 
     def _log_weather_info(self):
         if (

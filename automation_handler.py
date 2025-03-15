@@ -47,6 +47,7 @@ class AutomationHandler:
             )
             return
 
+        # Récupérer l'heure la plus chaude ou fallback sur le preset
         hottest_hour = (
             self.weather_client.get_hottest_hour()
             if self.weather_client
@@ -75,13 +76,14 @@ class AutomationHandler:
             f"Température par défaut en dehors de la plage : {temp_min:.1f}°C"
         )
 
-        # Prioriser la consigne utilisateur pendant 15 minutes
-        if self.last_user_update and (time.time() - self.last_user_update < 15 * 60):
+        # Respecter la consigne utilisateur pendant 5 minutes après un changement
+        if self.last_user_update and (time.time() - self.last_user_update < 5 * 60):
             target_temp = c
             self.logger.info(
-                f"Utilisation de la consigne utilisateur : {target_temp}°C"
+                f"Utilisation de la consigne utilisateur récente : {target_temp}°C (automation ignorée)"
             )
         else:
+            # Calculer la consigne optimisée
             if (current_hour >= start_hour and current_hour < end_hour) or (
                 start_hour > end_hour
                 and (current_hour >= start_hour or current_hour < end_hour)
@@ -90,7 +92,6 @@ class AutomationHandler:
                     progress = (current_hour - start_hour) / self.heating_duration
                 else:
                     progress = (current_hour + 24 - start_hour) / self.heating_duration
-
                 if progress <= 0.5:
                     target_temp = temp_min + (c - temp_min) * (progress / 0.5)
                 else:
@@ -98,41 +99,28 @@ class AutomationHandler:
             else:
                 target_temp = temp_min
 
-        target_temp = round(target_temp, 1)
-        self.logger.debug(f"Consigne calculée pour le Yutampo : {target_temp}°C")
+            target_temp = round(target_temp, 1)
+            self.logger.debug(f"Consigne calculée par optimisation : {target_temp}°C")
 
-        if self.api_client.set_heat_setting(
-            self.physical_device.parent_id, setting_temp_dhw=target_temp
-        ):
-            self.physical_device.setting_temperature = target_temp
-            self.mqtt_handler.publish_state(
-                self.physical_device.id,
-                self.physical_device.setting_temperature,
-                self.physical_device.current_temperature,
-                self.physical_device.mode,
-                self.physical_device.action,
-                self.physical_device.operation_label,
-            )
-        else:
-            self.logger.error(
-                "Échec de l'application de la consigne au Yutampo physique."
-            )
-
-    def set_season_preset(self, preset_name):
-        for preset in self.presets:
-            if preset["name"] == preset_name:
-                self.season_preset = preset_name
-                self.heating_duration = preset["duration"]
-                self.virtual_thermostat.set_temperature(preset["target_temperature"])
-                self.virtual_thermostat.set_temperature_low(
-                    preset["target_temperature_low"]
+            # Appliquer au chauffe-eau physique
+            if self.api_client.set_heat_setting(
+                self.physical_device.parent_id,
+                run_stop_dhw=1,
+                setting_temp_dhw=target_temp,
+            ):
+                self.physical_device.setting_temperature = target_temp
+                self.mqtt_handler.publish_state(
+                    self.physical_device.id,
+                    self.physical_device.setting_temperature,
+                    self.physical_device.current_temperature,
+                    self.physical_device.mode,
+                    self.physical_device.action,
+                    self.physical_device.operation_label,
                 )
-                self.virtual_thermostat.set_temperature_high(
-                    preset["target_temperature_high"]
-                )
-                self.last_user_update = time.time()  # Mettre à jour le timestamp
                 self.logger.info(
-                    f"Action utilisateur : Préréglage saisonnier mis à jour : {self.season_preset}, durée de variation : {self.heating_duration} heures"
+                    f"Consigne optimisée appliquée au chauffe-eau physique : {target_temp}°C"
                 )
-                return
-        self.logger.warning(f"Préréglage inconnu : {preset_name}")
+            else:
+                self.logger.error(
+                    "Échec de l'application de la consigne optimisée au chauffe-eau physique"
+                )
