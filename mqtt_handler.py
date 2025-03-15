@@ -286,10 +286,12 @@ class MqttHandler:
         )
         self.publish_input_select_state("yutampo_season_preset", preset_names[0])
 
-    def publish_input_select_state(self, entity_id, value):
+    def publish_input_select_state(self, entity_id, state):
         state_topic = f"yutampo/input_select/{entity_id}/state"
-        self.client.publish(state_topic, value, retain=True)
-        self.logger.debug(f"État publié pour {entity_id}: {value}")
+        self.client.publish(state_topic, state, retain=True)
+        self.logger.info(
+            f"État publié pour {entity_id}: {state}"
+        )  # Plus précis que DEBUG
 
     def disconnect(self):
         self.client.loop_stop()
