@@ -19,7 +19,7 @@ options:
   scan_interval: 300
   discovery_prefix: "homeassistant"
   weather_entity: "weather.forecast_maison"
-  log_level: "DEBUG"  # Par défaut DEBUG pour le développement
+  log_level: "DEBUG"  # Valeurs autorisées : VERBOSE, DEBUG, INFO, WARNING, ERROR
   presets:
     - name: "Hiver"
       target_temperature: 50
@@ -50,7 +50,7 @@ schema:
   scan_interval: int
   discovery_prefix: str
   weather_entity: str
-  log_level: str  # Simplifié en str, validation dans le code
+  log_level: str  # Validation dans le code : VERBOSE, DEBUG, INFO, WARNING, ERROR
   presets:
     - name: str
       target_temperature: float

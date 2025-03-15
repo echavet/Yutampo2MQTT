@@ -23,17 +23,18 @@ logging.Logger.verbose = verbose
 
 
 class YutampoAddon:
+    VALID_LOG_LEVELS = ["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR"]
+
     def __init__(self, config_path="/data/options.json"):
         # Configurer le logging de base avant de charger la config
         logging.basicConfig(level=logging.INFO)  # Niveau temporaire
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.config = self._load_config(config_path)
         # Valider et appliquer le niveau de log
-        valid_log_levels = ["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR"]
         log_level = self.config["log_level"].upper()
-        if log_level not in valid_log_levels:
+        if log_level not in self.VALID_LOG_LEVELS:
             self.logger.warning(
-                f"Niveau de log invalide '{log_level}', utilisation de 'INFO' par défaut."
+                f"Niveau de log invalide '{log_level}', doit être l'un de {self.VALID_LOG_LEVELS}. Utilisation de 'INFO' par défaut."
             )
             log_level = "INFO"
         numeric_level = getattr(logging, log_level, logging.INFO)
@@ -133,6 +134,12 @@ class YutampoAddon:
                     f"Préréglage mal formé : {preset}. Clés requises : {required_keys}"
                 )
                 exit(1)
+            # Validation de hottest_hour si présent
+            if "hottest_hour" in preset and not (0 <= preset["hottest_hour"] <= 23):
+                self.logger.warning(
+                    f"hottest_hour ({preset['hottest_hour']}) doit être entre 0 et 23. Ignoré."
+                )
+                del preset["hottest_hour"]
 
         return {
             "username": config.get("username"),
