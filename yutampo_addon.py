@@ -9,13 +9,31 @@ from virtual_thermostat import VirtualThermostat
 from weather_client import WeatherClient
 from automation_handler import AutomationHandler
 
+# Ajouter VERBOSE au module logging
+logging.VERBOSE = 5
+logging.addLevelName(logging.VERBOSE, "VERBOSE")
+
+
+def verbose(self, message, *args, **kwargs):
+    if self.isEnabledFor(logging.VERBOSE):
+        self._log(logging.VERBOSE, message, args, **kwargs)
+
+
+logging.Logger.verbose = verbose
+
 
 class YutampoAddon:
-    def __init__(self, config_path):
-        logging.basicConfig(level=logging.DEBUG)
+    def __init__(self, config_path="/data/options.json"):  # Par défaut pour HA
+        # Configurer le logging de base avant de charger la config
+        logging.basicConfig(level=logging.INFO)  # Niveau temporaire
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.config = self._load_config(config_path)
-        logging.getLogger().setLevel(getattr(logging, self.config["log_level"].upper()))
+        # Appliquer le niveau de log de la config
+        log_level = self.config["log_level"].upper()
+        numeric_level = getattr(logging, log_level, logging.INFO)
+        logging.getLogger().setLevel(numeric_level)
+        self.logger.info(f"Log level configuré à : {log_level}")
+
         self.logger.debug(f"Config initiale : {self.config}")
         self.api_client = ApiClient(self.config)
         self.mqtt_handler = MqttHandler(self.config, api_client=self.api_client)
@@ -34,11 +52,25 @@ class YutampoAddon:
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
 
-        mqtt_host = os.getenv("MQTTHOST") or os.getenv("MQTT_HOST")
-        mqtt_port = os.getenv("MQTTPORT") or os.getenv("MQTT_PORT", "1883")
-        mqtt_user = os.getenv("MQTTUSER") or os.getenv("MQTT_USERNAME")
-        mqtt_password = os.getenv("MQTTPASSWORD") or os.getenv("MQTT_PASSWORD")
-        ha_token = os.getenv("HASSIO_TOKEN")
+        mqtt_host = (
+            os.getenv("MQTTHOST") or os.getenv("MQTT_HOST") or config.get("mqtt_host")
+        )
+        mqtt_port = (
+            os.getenv("MQTTPORT")
+            or os.getenv("MQTT_PORT")
+            or config.get("mqtt_port", "1883")
+        )
+        mqtt_user = (
+            os.getenv("MQTTUSER")
+            or os.getenv("MQTT_USERNAME")
+            or config.get("mqtt_user")
+        )
+        mqtt_password = (
+            os.getenv("MQTTPASSWORD")
+            or os.getenv("MQTT_PASSWORD")
+            or config.get("mqtt_password")
+        )
+        ha_token = os.getenv("HASSIO_TOKEN") or config.get("ha_token")
         self.logger.debug(f"Token HA récupéré : {'présent' if ha_token else 'absent'}")
 
         scan_interval = config.get("scan_interval", 60)
@@ -50,7 +82,7 @@ class YutampoAddon:
 
         discovery_prefix = config.get("discovery_prefix", "homeassistant")
         weather_entity = config.get("weather_entity", "weather.forecast_maison")
-        log_level = config.get("log_level", "DEBUG")
+        log_level = config.get("log_level", "INFO")  # INFO par défaut si non spécifié
 
         presets = config.get(
             "presets",
@@ -61,6 +93,7 @@ class YutampoAddon:
                     "target_temperature_low": 45,
                     "target_temperature_high": 55,
                     "duration": 6,
+                    "hottest_hour": 14.0,
                 },
                 {
                     "name": "Printemps/Automne",
@@ -68,6 +101,7 @@ class YutampoAddon:
                     "target_temperature_low": 41,
                     "target_temperature_high": 49,
                     "duration": 5,
+                    "hottest_hour": 15.0,
                 },
                 {
                     "name": "Été",
@@ -75,6 +109,7 @@ class YutampoAddon:
                     "target_temperature_low": 37,
                     "target_temperature_high": 43,
                     "duration": 4,
+                    "hottest_hour": 16.0,
                 },
             ],
         )

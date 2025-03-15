@@ -18,24 +18,27 @@ options:
   password: "ton_password"
   scan_interval: 300
   discovery_prefix: "homeassistant"
-  weather_entity: "weather.forecast_maison"  # Par défaut ton entité
+  weather_entity: "weather.forecast_maison"
   log_level: "DEBUG"  # Par défaut DEBUG pour le développement
   presets:
     - name: "Hiver"
       target_temperature: 50
       target_temperature_low: 45
       target_temperature_high: 55
-      duration: 6
+      duration: 5.0
+      hottest_hour: 14.0
     - name: "Printemps/Automne"
-      target_temperature: 45
-      target_temperature_low: 41
-      target_temperature_high: 49
-      duration: 5
+      target_temperature: 46
+      target_temperature_low: 44
+      target_temperature_high: 52
+      duration: 6.0
+      hottest_hour: 15.0
     - name: "Été"
-      target_temperature: 40
-      target_temperature_low: 37
-      target_temperature_high: 43
-      duration: 4
+      target_temperature: 46
+      target_temperature_low: 41
+      target_temperature_high: 51
+      duration: 8.0
+      hottest_hour: 16.0
   mqtt_host: "<auto_detect>"
   mqtt_port: "<auto_detect>"
   mqtt_user: "<auto_detect>"
@@ -47,13 +50,14 @@ schema:
   scan_interval: int
   discovery_prefix: str
   weather_entity: str
-  log_level: list(DEBUG|INFO|WARNING|ERROR)  # Liste déroulante dans l’interface
+  log_level: select(VERBOSE,DEBUG,INFO,WARNING,ERROR)
   presets:
     - name: str
       target_temperature: float
       target_temperature_low: float
       target_temperature_high: float
       duration: float
+      hottest_hour: float(0,23)?  # Optionnel, entre 0 et 23h
   mqtt_host: str
   mqtt_port: str
   mqtt_user: str

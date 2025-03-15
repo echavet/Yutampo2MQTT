@@ -6,6 +6,18 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import threading
 import time
 
+# Ajouter un niveau VERBOSE personnalisé
+logging.VERBOSE = 5
+logging.addLevelName(logging.VERBOSE, "VERBOSE")
+
+
+def verbose(self, message, *args, **kwargs):
+    if self.isEnabledFor(logging.VERBOSE):
+        self._log(logging.VERBOSE, message, args, **kwargs)
+
+
+logging.Logger.verbose = verbose
+
 
 class WeatherClient:
     def __init__(self, config, automation_handler=None):
@@ -73,7 +85,9 @@ class WeatherClient:
         """Traite les messages reçus via WebSocket."""
         try:
             data = json.loads(message)
-            self.logger.debug(f"Message WebSocket reçu : {json.dumps(data, indent=2)}")
+            self.logger.verbose(
+                f"Message WebSocket reçu : {json.dumps(data, indent=2)}"
+            )  # VERBOSE
             if data.get("type") == "auth_required":
                 ws.send(json.dumps({"type": "auth", "access_token": self.ha_token}))
                 self.logger.debug("Envoi du token d’authentification.")
@@ -81,11 +95,8 @@ class WeatherClient:
                 self.logger.info("Authentification WebSocket réussie.")
                 self._request_forecast()
             elif data.get("type") == "result":
-                # Ignorer les messages "result" avec result: null
                 if data.get("success") and data.get("result") is None:
-                    self.logger.debug(
-                        "Message 'result' reçu avec result: null, souscription confirmée."
-                    )
+                    self.logger.debug("Souscription confirmée (result: null).")
                 else:
                     self.logger.debug("Message 'result' inattendu, ignoré.")
             elif data.get("type") == "event" and "forecast" in data.get("event", {}):
@@ -144,7 +155,7 @@ class WeatherClient:
             temp = entry.get("temperature", float("-inf"))
             dt = datetime.strptime(entry["datetime"], "%Y-%m-%dT%H:%M:%S%z")
             hour = dt.hour + dt.minute / 60.0
-            self.logger.debug(f"Prévision : {dt} -> {temp}°C")
+            self.logger.verbose(f"Prévision : {dt} -> {temp}°C")  # VERBOSE
             if temp > hottest_temp:
                 hottest_temp = temp
                 hottest_hour = hour
