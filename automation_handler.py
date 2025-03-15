@@ -1,3 +1,10 @@
+import logging  # Ajouté ici
+from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+import time  # Déjà ajouté précédemment
+
+
 class AutomationHandler:
     def __init__(
         self,
@@ -8,7 +15,7 @@ class AutomationHandler:
         weather_client,
         presets,
     ):
-        self.logger = logging.getLogger("Yutampo_ha_addon")
+        self.logger = logging.getLogger("Yutampo_ha_addon")  # Maintenant valide
         self.api_client = api_client
         self.mqtt_handler = mqtt_handler
         self.virtual_thermostat = virtual_thermostat
@@ -19,6 +26,18 @@ class AutomationHandler:
         self.season_preset = self.presets[0]["name"]
         self.heating_duration = self.presets[0]["duration"]
         self.last_user_update = None  # Timestamp de la dernière mise à jour utilisateur
+
+    def start(self):
+        self._schedule_automation()
+        self.scheduler.start()
+        self.logger.info("Automation interne démarrée.")
+
+    def _schedule_automation(self):
+        self.scheduler.add_job(
+            self._run_automation,
+            trigger=IntervalTrigger(minutes=5),
+            next_run_time=datetime.now() + timedelta(seconds=5),
+        )
 
     def _run_automation(self):
         self.logger.debug("Exécution de l'automation interne...")
