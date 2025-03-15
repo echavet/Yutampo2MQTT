@@ -23,13 +23,19 @@ logging.Logger.verbose = verbose
 
 
 class YutampoAddon:
-    def __init__(self, config_path="/data/options.json"):  # Par défaut pour HA
+    def __init__(self, config_path="/data/options.json"):
         # Configurer le logging de base avant de charger la config
         logging.basicConfig(level=logging.INFO)  # Niveau temporaire
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.config = self._load_config(config_path)
-        # Appliquer le niveau de log de la config
+        # Valider et appliquer le niveau de log
+        valid_log_levels = ["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR"]
         log_level = self.config["log_level"].upper()
+        if log_level not in valid_log_levels:
+            self.logger.warning(
+                f"Niveau de log invalide '{log_level}', utilisation de 'INFO' par défaut."
+            )
+            log_level = "INFO"
         numeric_level = getattr(logging, log_level, logging.INFO)
         logging.getLogger().setLevel(numeric_level)
         self.logger.info(f"Log level configuré à : {log_level}")

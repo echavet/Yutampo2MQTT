@@ -50,7 +50,7 @@ schema:
   scan_interval: int
   discovery_prefix: str
   weather_entity: str
-  log_level: select(VERBOSE,DEBUG,INFO,WARNING,ERROR)
+  log_level: str  # Simplifié en str, validation dans le code
   presets:
     - name: str
       target_temperature: float
