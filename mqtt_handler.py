@@ -5,40 +5,42 @@ import logging
 
 
 class MqttHandler:
+
     def __init__(self, config, api_client=None):
         self.logger = logging.getLogger("Yutampo_ha_addon")
-        self.client = mqtt.Client(client_id="yutampo-addon-4103")  # Client ID fixe
+        # Stocker les paramètres de configuration comme attributs
+        self.mqtt_host = config["mqtt_host"]
+        self.mqtt_port = config["mqtt_port"]
+        self.mqtt_user = config["mqtt_user"]
+        self.mqtt_password = config["mqtt_password"]
+
+        # Initialiser le client MQTT avec un Client ID fixe
+        self.client = mqtt.Client(client_id="yutampo-addon-4103")
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = (
             self._on_disconnect
         )  # Ajouter gestion des déconnexions
         self.client.on_message = self._on_message
-        self.client.username_pw_set(config["mqtt_user"], config["mqtt_password"])
-        self.client.connect(
-            config["mqtt_host"], config["mqtt_port"], keepalive=15
-        )  # Réduire Keep Alive à 15s
-        self.client.loop_start()
+        self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
         self.connected = False
+        # Connecter dans __init__
+        self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=15)
+        self.client.loop_start()
 
     def connect(self):
         if not self.mqtt_host:
-            self.logger.error("MQTT host non défini. Impossible de se connecter.")
-            raise ValueError("MQTT host cannot be empty or None")
-
-        self.logger.info(
-            f"Tentative de connexion au broker MQTT : {self.mqtt_host}:{self.mqtt_port}"
-        )
-        try:
-            self.client.connect(self.mqtt_host, self.mqtt_port, 60)
+            self.logger.error("Hôte MQTT non défini !")
+            return
+        if not self.connected:
+            self.logger.info("Tentative de connexion au broker MQTT...")
+            self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=15)
             self.client.loop_start()
-        except Exception as e:
-            self.logger.error(f"Échec de la connexion au broker MQTT : {str(e)}")
-            raise
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.logger.info("Connecté au broker MQTT avec succès")
             self.connected = True
+            # S’abonner aux topics nécessaires
             self.client.subscribe("yutampo/climate/+/set")
             self.client.subscribe("yutampo/climate/+/mode/set")
         else:
@@ -241,7 +243,7 @@ class MqttHandler:
     def publish_availability(self, device_id, state):
         if not self.connected:
             self.logger.warning("Client MQTT non connecté, tentative de reconnexion...")
-            self.client.reconnect()
+            self.connect()
         self.client.publish(
             f"yutampo/climate/{device_id}/availability", state, retain=True
         )
