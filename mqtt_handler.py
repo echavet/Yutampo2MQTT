@@ -1,8 +1,10 @@
 import paho.mqtt.client as mqtt
 import json
 import logging
-import time
 import threading
+import time
+import signal
+import sys
 
 
 class MqttHandler:
@@ -15,24 +17,32 @@ class MqttHandler:
         self.mqtt_password = config["mqtt_password"]
         self.devices = {}
         self.api_client = api_client
+        self.running = True  # Indicateur pour arrêter les threads
 
-        # Initialiser le client MQTT
         self.client = mqtt.Client(client_id="yutampo-addon-4103")
-        self.client.enable_logger(self.logger)  # Logs DEBUG Paho
+        self.client.enable_logger(self.logger)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
         self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
         self.connected = False
 
-        # Connexion initiale
         try:
             self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=15)
         except Exception as e:
             self.logger.error(f"Erreur lors de la connexion MQTT initiale : {str(e)}")
 
+        # Gestion des signaux pour un arrêt propre
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
+    def _signal_handler(self, signum, frame):
+        self.logger.info(f"Signal reçu ({signum}), arrêt en cours...")
+        self.running = False
+        self.disconnect()
+        sys.exit(0)
+
     def start(self):
-        """Démarre la boucle MQTT et le heartbeat"""
         self.loop_thread = threading.Thread(target=self._run_loop, daemon=True)
         self.loop_thread.start()
         self.logger.info("Boucle MQTT démarrée dans un thread séparé")
@@ -44,42 +54,42 @@ class MqttHandler:
         self.logger.info("Heartbeat MQTT démarré dans un thread séparé")
 
     def _run_loop(self):
-        """Boucle MQTT principale avec gestion des erreurs"""
-        while True:
+        while self.running:
             try:
                 self.client.loop_forever()
             except Exception as e:
-                self.logger.error(f"Erreur dans la boucle MQTT : {str(e)}")
-                self.connected = False
-                self.logger.info("Tentative de reconnexion dans 5 secondes...")
-                time.sleep(5)
-                try:
-                    self.client.reconnect()
-                except Exception as e:
-                    self.logger.error(f"Échec de la reconnexion : {str(e)}")
+                if self.running:  # Ne pas loguer si arrêt volontaire
+                    self.logger.error(f"Erreur dans la boucle MQTT : {str(e)}")
+                    self.connected = False
+                    self.logger.info("Tentative de reconnexion dans 5 secondes...")
+                    time.sleep(5)
+                    try:
+                        self.client.reconnect()
+                    except Exception as e:
+                        self.logger.error(f"Échec de la reconnexion : {str(e)}")
 
     def _run_heartbeat(self):
-        """Envoie un heartbeat toutes les 10 secondes"""
-        while True:
+        while self.running:
             if self.connected:
                 try:
                     self.client.publish("yutampo/heartbeat", "alive", qos=1)
                     self.logger.debug("Heartbeat envoyé : alive")
                 except Exception as e:
-                    self.logger.warning(f"Échec de l'envoi du heartbeat : {str(e)}")
-                    self.connected = False
-                    self.logger.info(
-                        "Tentative de reconnexion suite à l'échec du heartbeat..."
-                    )
-                    try:
-                        self.client.reconnect()
-                    except Exception as e:
-                        self.logger.error(
-                            f"Échec de la reconnexion dans le heartbeat : {str(e)}"
+                    if self.running:
+                        self.logger.warning(f"Échec de l'envoi du heartbeat : {str(e)}")
+                        self.connected = False
+                        self.logger.info(
+                            "Tentative de reconnexion suite à l'échec du heartbeat..."
                         )
+                        try:
+                            self.client.reconnect()
+                        except Exception as e:
+                            self.logger.error(
+                                f"Échec de la reconnexion dans le heartbeat : {str(e)}"
+                            )
             else:
                 self.logger.debug("Heartbeat en attente : client non connecté")
-            time.sleep(10)  # Heartbeat toutes les 10 secondes
+            time.sleep(10)
 
     def connect(self):
         if not self.mqtt_host:
@@ -315,6 +325,7 @@ class MqttHandler:
             )
 
     def disconnect(self):
+        self.running = False
         self.client.loop_stop()
         self.client.disconnect()
         self.connected = False
