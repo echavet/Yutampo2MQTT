@@ -24,7 +24,7 @@ class MqttHandler:
         self.connected = False
         self.api_client = api_client  # Stocker api_client pour _on_message
         # Connecter dans __init__
-        self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=15)
+        self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=60)
         self.client.loop_start()
 
     def connect(self):
