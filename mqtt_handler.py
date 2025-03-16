@@ -1,11 +1,9 @@
-# mqtt_handler.py
 import paho.mqtt.client as mqtt
 import json
 import logging
 
 
 class MqttHandler:
-
     def __init__(self, config, api_client=None):
         self.logger = logging.getLogger("Yutampo_ha_addon")
         # Stocker les paramètres de configuration comme attributs
@@ -14,15 +12,17 @@ class MqttHandler:
         self.mqtt_user = config["mqtt_user"]
         self.mqtt_password = config["mqtt_password"]
 
+        # Initialiser le dictionnaire des appareils
+        self.devices = {}  # Ajout pour stocker les objets Device
+
         # Initialiser le client MQTT avec un Client ID fixe
         self.client = mqtt.Client(client_id="yutampo-addon-4103")
         self.client.on_connect = self._on_connect
-        self.client.on_disconnect = (
-            self._on_disconnect
-        )  # Ajouter gestion des déconnexions
+        self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
         self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
         self.connected = False
+        self.api_client = api_client  # Stocker api_client pour _on_message
         # Connecter dans __init__
         self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=15)
         self.client.loop_start()
@@ -159,13 +159,13 @@ class MqttHandler:
             self.logger.error(f"Erreur lors du traitement du message: {str(e)}")
 
     def publish_discovery(self, device):
-        self.devices[device.id] = device
+        self.devices[device.id] = device  # Stocker l'appareil dans le dictionnaire
         discovery_topic = f"homeassistant/climate/{device.id}/config"
         payload = {
             "name": device.name,
             "unique_id": device.id,
             "modes": ["off", "heat"],
-            "state_topic": f"yutampo/climate/{device.id}/state",  # Ajout pour logbook
+            "state_topic": f"yutampo/climate/{device.id}/state",
             "current_temperature_topic": f"yutampo/climate/{device.id}/current_temperature",
             "temperature_command_topic": f"yutampo/climate/{device.id}/set",
             "temperature_state_topic": f"yutampo/climate/{device.id}/temperature_state",
