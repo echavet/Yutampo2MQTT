@@ -70,7 +70,7 @@ class YutampoAddon:
             exit(1)
 
         self.logger.info("Démarrage de l'addon...")
-        self.mqtt_handler.connect()
+        self.mqtt_handler.start()  # Démarrer la boucle MQTT et le heartbeat
 
         if not self.api_client.authenticate():
             self.logger.error("Impossible de s'authentifier. Arrêt de l'add-on.")

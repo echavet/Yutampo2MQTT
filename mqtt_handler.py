@@ -1,31 +1,84 @@
 import paho.mqtt.client as mqtt
 import json
 import logging
+import time
 
 
 class MqttHandler:
+
     def __init__(self, config, api_client=None):
         self.logger = logging.getLogger("Yutampo_ha_addon")
-        # Stocker les paramètres de configuration comme attributs
         self.mqtt_host = config["mqtt_host"]
         self.mqtt_port = config["mqtt_port"]
         self.mqtt_user = config["mqtt_user"]
         self.mqtt_password = config["mqtt_password"]
+        self.devices = {}
+        self.api_client = api_client
 
-        # Initialiser le dictionnaire des appareils
-        self.devices = {}  # Ajout pour stocker les objets Device
-
-        # Initialiser le client MQTT avec un Client ID fixe
+        # Initialiser le client MQTT
         self.client = mqtt.Client(client_id="yutampo-addon-4103")
+        self.client.enable_logger(self.logger)  # Logs DEBUG Paho
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
         self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
         self.connected = False
-        self.api_client = api_client  # Stocker api_client pour _on_message
-        # Connecter dans __init__
-        self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=60)
-        self.client.loop_start()
+
+        # Connexion initiale
+        try:
+            self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=15)
+        except Exception as e:
+            self.logger.error(f"Erreur lors de la connexion MQTT initiale : {str(e)}")
+
+    def start(self):
+        """Démarre la boucle MQTT et le heartbeat"""
+        self.loop_thread = threading.Thread(target=self._run_loop, daemon=True)
+        self.loop_thread.start()
+        self.logger.info("Boucle MQTT démarrée dans un thread séparé")
+
+        self.heartbeat_thread = threading.Thread(
+            target=self._run_heartbeat, daemon=True
+        )
+        self.heartbeat_thread.start()
+        self.logger.info("Heartbeat MQTT démarré dans un thread séparé")
+
+    def _run_loop(self):
+        """Boucle MQTT principale avec gestion des erreurs"""
+        while True:
+            try:
+                self.client.loop_forever()
+            except Exception as e:
+                self.logger.error(f"Erreur dans la boucle MQTT : {str(e)}")
+                self.connected = False
+                self.logger.info("Tentative de reconnexion dans 5 secondes...")
+                time.sleep(5)
+                try:
+                    self.client.reconnect()
+                except Exception as e:
+                    self.logger.error(f"Échec de la reconnexion : {str(e)}")
+
+    def _run_heartbeat(self):
+        """Envoie un heartbeat toutes les 10 secondes"""
+        while True:
+            if self.connected:
+                try:
+                    self.client.publish("yutampo/heartbeat", "alive", qos=1)
+                    self.logger.debug("Heartbeat envoyé : alive")
+                except Exception as e:
+                    self.logger.warning(f"Échec de l'envoi du heartbeat : {str(e)}")
+                    self.connected = False
+                    self.logger.info(
+                        "Tentative de reconnexion suite à l'échec du heartbeat..."
+                    )
+                    try:
+                        self.client.reconnect()
+                    except Exception as e:
+                        self.logger.error(
+                            f"Échec de la reconnexion dans le heartbeat : {str(e)}"
+                        )
+            else:
+                self.logger.debug("Heartbeat en attente : client non connecté")
+            time.sleep(10)  # Heartbeat toutes les 10 secondes
 
     def connect(self):
         if not self.mqtt_host:
@@ -40,7 +93,6 @@ class MqttHandler:
         if rc == 0:
             self.logger.info("Connecté au broker MQTT avec succès")
             self.connected = True
-            # S’abonner aux topics nécessaires
             self.client.subscribe("yutampo/climate/+/set")
             self.client.subscribe("yutampo/climate/+/mode/set")
         else:
@@ -51,8 +103,13 @@ class MqttHandler:
         self.logger.warning(f"Déconnexion du broker MQTT, code: {rc}")
         self.connected = False
         if rc != 0:  # Déconnexion inattendue
-            self.logger.info("Tentative de reconnexion au broker MQTT...")
-            self.client.reconnect()
+            self.logger.info("Tentative de reconnexion automatique...")
+            try:
+                self.client.reconnect()
+            except Exception as e:
+                self.logger.error(
+                    f"Échec de la reconnexion dans on_disconnect : {str(e)}"
+                )
 
     def _on_message(self, client, userdata, msg):
         self.logger.info(
@@ -242,14 +299,22 @@ class MqttHandler:
 
     def publish_availability(self, device_id, state):
         if not self.connected:
-            self.logger.warning("Client MQTT non connecté, tentative de reconnexion...")
-            self.connect()
-        self.client.publish(
-            f"yutampo/climate/{device_id}/availability", state, retain=True
-        )
-        self.logger.debug(f"Disponibilité publiée pour {device_id}: {state}")
+            self.logger.warning(
+                "Client MQTT non connecté, en attente de reconnexion..."
+            )
+            time.sleep(1)  # Attendre un peu avant de publier
+        try:
+            self.client.publish(
+                f"yutampo/climate/{device_id}/availability", state, retain=True, qos=1
+            )
+            self.logger.debug(f"Disponibilité publiée pour {device_id}: {state}")
+        except Exception as e:
+            self.logger.error(
+                f"Erreur lors de la publication de la disponibilité : {str(e)}"
+            )
 
     def disconnect(self):
         self.client.loop_stop()
         self.client.disconnect()
+        self.connected = False
         self.logger.info("Connexion MQTT arrêtée")
