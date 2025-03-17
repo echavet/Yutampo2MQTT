@@ -1,0 +1,95 @@
+{
+    "timestamp": 1740676027315,
+    "status": "success",
+    "data": {
+        "device_status": [
+            {
+                "id": 4103,
+                "disabled": false,
+                "ownerId": 3488091,
+                "name": "chauffe-eau",
+                "lastComm": 1740676016000,
+                "type": 0,
+                "status": 1,
+                "hash": "",
+                "firmware": "H-0302 0101000065574967",
+                "key": "973833239176",
+                "currentTime": 20250227180655,
+                "currentTimeMillis": 1740676027315,
+                "rssi": -58
+            }
+        ],
+        "rooms": [
+            {
+                "id": 828,
+                "installation_id": 10343,
+                "name": "hall",
+                "disabled": false
+            }
+        ],
+        "weatherTemperature": 12,
+        "latitude": "43.301366178984615",
+        "iu_qty": 1,
+        "weatherForecastIcon": "04d",
+        "administrator": "echavet2025",
+        "holidays": [
+            {
+                "indoorId": 4034,
+                "year": 0,
+                "month": 0,
+                "day": 0,
+                "hour": -1,
+                "minute": -1,
+                "c1AirSetting": null,
+                "c2AirSetting": null,
+                "c1Affected": false,
+                "c2Affected": false,
+                "dhwAffected": false,
+                "swpAffected": false,
+                "pacAffected": false,
+                "iot_time": 20250227180655,
+                "dhwSetting": null,
+                "swpSetting": null,
+                "compatibleWithDHWSWPSettings": true,
+                "zones": []
+            }
+        ],
+        "installation": 10343,
+        "avOuTemp": 15.0,
+        "elements": [
+            {
+                "parentId": 4034,
+                "elementType": 3,
+                "parentName": "chauffe eau",
+                "mode": 1,
+                "realMode": 1,
+                "onOff": 1,
+                "settingTemperature": 46.0,
+                "currentTemperature": 45.0,
+                "yutaki": true,
+                "modelCode": 4,
+                "alarmCode": 0,
+                "deviceId": 4103,
+                "deviceName": "chauffe-eau",
+                "ouAddress": 0,
+                "iuAddress": 0,
+                "roomId": 828,
+                "ecocomfort": -1,
+                "fanSpeed": -1,
+                "operationStatus": 0,
+                "hasCooling": false,
+                "hasAuto": false,
+                "hasBoost": false,
+                "c1Demand": false,
+                "c2Demand": false,
+                "doingBoost": false,
+                "timerRunning": false,
+                "fixAvailable": false
+            }
+        ],
+        "name": "Maison Chavet",
+        "weatherForecastUpdate": 1740654323749,
+        "user_dispayableName": "Eric",
+        "longitude": "5.484642508018417"
+    }
+}

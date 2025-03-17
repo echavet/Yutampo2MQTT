@@ -40,10 +40,24 @@ class YutampoAddon:
             )
             scan_interval = 60
 
+        # Récupérer heartbeat_interval, par défaut 0 (désactivé)
+        heartbeat_interval = config.get("heartbeat_interval", 0)
+        if not isinstance(heartbeat_interval, (int, float)):
+            self.logger.warning(
+                f"heartbeat_interval ({heartbeat_interval}) doit être un entier. Désactivation du heartbeat."
+            )
+            heartbeat_interval = 0
+        elif heartbeat_interval > 0 and heartbeat_interval < 10:
+            self.logger.warning(
+                f"heartbeat_interval ({heartbeat_interval}) doit être >= 10 secondes ou 0 pour désactiver. Désactivation du heartbeat."
+            )
+            heartbeat_interval = 0
+
         return {
             "username": config.get("username"),
             "password": config.get("password"),
             "scan_interval": scan_interval,
+            "heartbeat_interval": heartbeat_interval,  # Ajout du nouveau paramètre
             "mqtt_host": mqtt_host,
             "mqtt_port": int(mqtt_port),
             "mqtt_user": mqtt_user,

@@ -1,3 +1,4 @@
+# mqtt_handler.py
 import paho.mqtt.client as mqtt
 import json
 import logging
@@ -15,6 +16,9 @@ class MqttHandler:
         self.mqtt_port = config["mqtt_port"]
         self.mqtt_user = config["mqtt_user"]
         self.mqtt_password = config["mqtt_password"]
+        self.heartbeat_interval = config.get(
+            "heartbeat_interval", 0
+        )  # Nouveau paramètre
         self.devices = {}
         self.api_client = api_client
         self.running = True  # Indicateur pour arrêter les threads
@@ -47,26 +51,17 @@ class MqttHandler:
         self.loop_thread.start()
         self.logger.info("Boucle MQTT démarrée dans un thread séparé")
 
-        self.heartbeat_thread = threading.Thread(
-            target=self._run_heartbeat, daemon=True
-        )
-        self.heartbeat_thread.start()
-        self.logger.info("Heartbeat MQTT démarré dans un thread séparé")
-
-    def _run_loop(self):
-        while self.running:
-            try:
-                self.client.loop_forever()
-            except Exception as e:
-                if self.running:  # Ne pas loguer si arrêt volontaire
-                    self.logger.error(f"Erreur dans la boucle MQTT : {str(e)}")
-                    self.connected = False
-                    self.logger.info("Tentative de reconnexion dans 5 secondes...")
-                    time.sleep(5)
-                    try:
-                        self.client.reconnect()
-                    except Exception as e:
-                        self.logger.error(f"Échec de la reconnexion : {str(e)}")
+        # Activer le heartbeat uniquement si heartbeat_interval > 0
+        if self.heartbeat_interval > 0:
+            self.heartbeat_thread = threading.Thread(
+                target=self._run_heartbeat, daemon=True
+            )
+            self.heartbeat_thread.start()
+            self.logger.info(
+                f"Heartbeat MQTT démarré avec un intervalle de {self.heartbeat_interval} secondes"
+            )
+        else:
+            self.logger.info("Heartbeat MQTT désactivé (heartbeat_interval = 0)")
 
     def _run_heartbeat(self):
         while self.running:
@@ -89,7 +84,22 @@ class MqttHandler:
                             )
             else:
                 self.logger.debug("Heartbeat en attente : client non connecté")
-            time.sleep(10)
+            time.sleep(self.heartbeat_interval)  # Utiliser l'intervalle configuré
+
+    def _run_loop(self):
+        while self.running:
+            try:
+                self.client.loop_forever()
+            except Exception as e:
+                if self.running:  # Ne pas loguer si arrêt volontaire
+                    self.logger.error(f"Erreur dans la boucle MQTT : {str(e)}")
+                    self.connected = False
+                    self.logger.info("Tentative de reconnexion dans 5 secondes...")
+                    time.sleep(5)
+                    try:
+                        self.client.reconnect()
+                    except Exception as e:
+                        self.logger.error(f"Échec de la reconnexion : {str(e)}")
 
     def connect(self):
         if not self.mqtt_host:

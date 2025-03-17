@@ -1,5 +1,5 @@
 name: "Yutampo2MQTT HA Addon"
-version: "3.1.8"
+version: "3.1.9"
 slug: "yutampo2mqtt"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet"
 services:
@@ -16,7 +16,7 @@ hassio_api: true
 options:
   username: "ton_username"
   password: "ton_password"
-  scan_interval: 300
+  scan_interval: 300  
 
   mqtt_host: "<auto_detect>"
   mqtt_port: "<auto_detect>"
@@ -27,6 +27,7 @@ schema:
   username: str
   password: password
   scan_interval: int
+  heartbeat_interval: int?
   mqtt_host: str
   mqtt_port: str
   mqtt_user: str
