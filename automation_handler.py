@@ -1,9 +1,3 @@
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from datetime import datetime, timedelta
-import logging
-
-
 class AutomationHandler:
     def __init__(
         self,
@@ -22,7 +16,7 @@ class AutomationHandler:
         self.weather_client = weather_client
         self.scheduler = BackgroundScheduler()
         self.setpoint = setpoint
-        self.amplitude = amplitude  # Peut être None au démarrage
+        self.amplitude = amplitude
         self.heating_duration = heating_duration
         self.forced_setpoint = None
 
@@ -40,16 +34,6 @@ class AutomationHandler:
             next_run_time=datetime.now() + timedelta(seconds=5),
         )
 
-    def set_amplitude(self, amplitude):
-        self.amplitude = amplitude
-        self.logger.info(
-            f"Amplitude thermique mise à jour via MQTT : {self.amplitude}°C"
-        )
-
-    def set_heating_duration(self, duration):
-        self.heating_duration = duration
-        self.logger.info(f"Durée de chauffe mise à jour : {self.heating_duration}h")
-
     def set_forced_setpoint(self, forced_setpoint):
         self.forced_setpoint = forced_setpoint
         self.logger.info(
@@ -60,6 +44,8 @@ class AutomationHandler:
     def reset_forced_setpoint(self):
         self.forced_setpoint = None
         self.logger.info("Consigne forcée réinitialisée, automation normale reprise.")
+        # Forcer une exécution immédiate pour reprendre la régulation
+        self._run_automation()
 
     def _apply_forced_setpoint(self):
         if self.physical_device.mode == "heat" and self.forced_setpoint is not None:
@@ -87,14 +73,16 @@ class AutomationHandler:
     def _run_automation(self):
         self.logger.debug("Exécution de l'automation interne...")
 
-        if self.forced_setpoint is not None:
-            current_temp = self.physical_device.current_temperature
-            if current_temp is None:
-                self.logger.warning(
-                    "Température actuelle non disponible, attente de mise à jour."
-                )
+        current_temp = self.physical_device.current_temperature
+        if current_temp is None:
+            self.logger.warning(
+                "Température actuelle non disponible, attente de mise à jour."
+            )
+            if self.forced_setpoint is not None:
                 self._apply_forced_setpoint()
-                return
+            return
+
+        if self.forced_setpoint is not None:
             if abs(current_temp - self.forced_setpoint) <= 1.0:
                 self.logger.info(
                     f"Consigne forcée {self.forced_setpoint}°C atteinte (actuel : {current_temp}°C), reprise de l'automation normale."
@@ -157,7 +145,7 @@ class AutomationHandler:
             self.logger.debug(f"Consigne calculée : {target_temp}°C")
 
         if self.physical_device.mode == "heat":
-            # Publier et appliquer systématiquement
+            # Appliquer la consigne calculée systématiquement quand la régulation est active
             self.mqtt_handler.publish_state(
                 self.physical_device.id,
                 target_temp,
@@ -187,3 +175,27 @@ class AutomationHandler:
                 )
             else:
                 self.logger.error("Échec de l'application de la consigne")
+
+    def set_mode(self, mode):  # Ajout pour gérer les changements de mode
+        if mode == "off":
+            self.api_client.set_heat_setting(
+                self.physical_device.parent_id, run_stop_dhw=0, setting_temp_dhw=None
+            )
+            self.logger.info(f"Changement de mode par l'utilisateur : heat -> off")
+        elif mode == "heat":
+            self.api_client.set_heat_setting(
+                self.physical_device.parent_id,
+                run_stop_dhw=1,
+                setting_temp_dhw=self.physical_device.setting_temperature,
+            )
+            self.logger.info(f"Changement de mode par l'utilisateur : off -> heat")
+            self.reset_forced_setpoint()  # Forcer la reprise de la régulation
+        self.mqtt_handler.publish_state(
+            self.physical_device.id,
+            self.physical_device.setting_temperature,
+            self.physical_device.current_temperature,
+            mode,
+            self.physical_device.action,
+            self.physical_device.operation_label,
+            source="user",
+        )
