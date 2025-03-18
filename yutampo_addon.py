@@ -78,9 +78,8 @@ class YutampoAddon:
         discovery_prefix = config.get("discovery_prefix") or "homeassistant"
         weather_entity = config.get("weather_entity")
         default_hottest_hour = config.get("default_hottest_hour", 15.0)
-        setpoint = config.get(
-            "setpoint", 50.0
-        )  # Nouveau paramètre avec valeur par défaut
+        setpoint = config.get("setpoint", 50.0)
+        regulation_amplitude = config.get("regulation_amplitude")  # None si non défini
         log_level = config.get("log_level", "INFO")
 
         return {
@@ -88,6 +87,7 @@ class YutampoAddon:
             "password": config.get("password"),
             "scan_interval": scan_interval,
             "setpoint": setpoint,
+            "regulation_amplitude": regulation_amplitude,  # Nouveau paramètre
             "mqtt_host": mqtt_host,
             "mqtt_port": int(mqtt_port),
             "mqtt_user": mqtt_user,
@@ -120,14 +120,30 @@ class YutampoAddon:
         self.mqtt_handler.register_input_numbers()
 
         if self.devices:
+            # Initialisation de l'amplitude : priorité aux options, sinon valeur par défaut
+            initial_amplitude = self.config.get("regulation_amplitude")
+            if initial_amplitude is not None:
+                self.logger.info(
+                    f"Amplitude de régulation thermique définie dans les options : {initial_amplitude}°C"
+                )
+            else:
+                initial_amplitude = (
+                    8  # Valeur par défaut si non défini dans les options
+                )
+                self.logger.info(
+                    f"Amplitude de régulation thermique non définie dans les options, utilisation de la valeur par défaut : {initial_amplitude}°C"
+                )
+
+            initial_heating_duration = 6  # Valeur par défaut fixe
+
             self.automation_handler = AutomationHandler(
                 self.api_client,
                 self.mqtt_handler,
                 self.devices[0],
                 self.weather_client,
-                setpoint=self.config["setpoint"],  # Passage du setpoint configuré
-                amplitude=8,
-                heating_duration=6,
+                setpoint=self.config["setpoint"],
+                amplitude=initial_amplitude,
+                heating_duration=initial_heating_duration,
             )
             self.mqtt_handler.automation_handler = self.automation_handler
             self.weather_client.start()

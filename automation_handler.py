@@ -22,25 +22,29 @@ class AutomationHandler:
         self.weather_client = weather_client
         self.scheduler = BackgroundScheduler()
         self.setpoint = setpoint
-        self.amplitude = amplitude
+        self.amplitude = amplitude  # Peut être None au démarrage
         self.heating_duration = heating_duration
         self.forced_setpoint = None
 
     def start(self):
         self._schedule_automation()
         self.scheduler.start()
-        self.logger.info("Automation interne démarrée.")
+        self.logger.info(
+            f"Automation interne démarrée avec amplitude initiale : {self.amplitude if self.amplitude is not None else 'non définie (inactive)'}."
+        )
 
     def _schedule_automation(self):
         self.scheduler.add_job(
-            self._run_automation,  # Méthode correcte
+            self._run_automation,
             trigger=IntervalTrigger(minutes=5),
             next_run_time=datetime.now() + timedelta(seconds=5),
         )
 
     def set_amplitude(self, amplitude):
         self.amplitude = amplitude
-        self.logger.info(f"Amplitude thermique mise à jour : {self.amplitude}°C")
+        self.logger.info(
+            f"Amplitude thermique mise à jour via MQTT : {self.amplitude}°C"
+        )
 
     def set_heating_duration(self, duration):
         self.heating_duration = duration
@@ -104,8 +108,10 @@ class AutomationHandler:
                 return
 
         self.logger.info("Automation normale en cours.")
-        if self.amplitude <= 0:
-            self.logger.debug("Amplitude thermique = 0, automation désactivée.")
+        if self.amplitude is None or self.amplitude <= 0:
+            self.logger.debug(
+                "Amplitude thermique non définie ou nulle, régulation désactivée."
+            )
             if self.physical_device.mode == "heat":
                 target_temp = self.setpoint
                 if self.physical_device.setting_temperature != target_temp:
@@ -125,7 +131,7 @@ class AutomationHandler:
                             source="automation",
                         )
                         self.logger.info(
-                            f"Changement de consigne automatique : {target_temp}°C appliqué"
+                            f"Changement de consigne automatique (sans régulation) : {target_temp}°C appliqué"
                         )
                     else:
                         self.logger.error("Échec de l'application de la consigne fixe")
