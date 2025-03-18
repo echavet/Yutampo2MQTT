@@ -50,6 +50,13 @@ class AutomationHandler:
             # Si l'appareil est en mode "heat", appliquer la consigne sans variation
             if self.physical_device.mode == "heat":
                 target_temp = self.physical_device.setting_temperature
+                if target_temp is None:
+                    target_temp = (
+                        50.0  # Valeur par défaut temporaire si non initialisée
+                    )
+                    self.logger.warning(
+                        "Consigne non initialisée, utilisation de 50°C par défaut."
+                    )
                 if self.api_client.set_heat_setting(
                     self.physical_device.parent_id,
                     run_stop_dhw=1,
@@ -87,6 +94,12 @@ class AutomationHandler:
             end_hour -= 24
 
         target_temp = self.physical_device.setting_temperature
+        if target_temp is None:
+            target_temp = 50.0  # Valeur par défaut temporaire si non initialisée
+            self.logger.warning(
+                "Consigne non initialisée, utilisation de 50°C par défaut."
+            )
+
         temp_min = target_temp - self.amplitude
 
         self.logger.info(f"Heure la plus chaude : {hottest_hour:.2f}h")
