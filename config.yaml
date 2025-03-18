@@ -1,5 +1,5 @@
 name: "Yutampo2MQTT HA Addon"
-version: "3.2.0"
+version: "3.2.1"  # Incrémenté depuis 3.2.0
 slug: "yutampo2mqtt"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet avec automation interne"
 services:
@@ -16,11 +16,9 @@ hassio_api: true
 options:
   username: "ton_username"
   password: "ton_password"
-  scan_interval: 300
-  discovery_prefix: "homeassistant"  # Valeur par défaut
-  weather_entity: null  # Optionnel
-  default_hottest_hour: 15.0  # Nouvelle option avec valeur par défaut
-  log_level: "DEBUG"  # Valeurs autorisées : VERBOSE, DEBUG, INFO, WARNING, ERROR
+  scan_interval: 300  
+  default_hottest_hour: 15.0
+  log_level: "DEBUG"
   mqtt_host: "<auto_detect>"
   mqtt_port: "<auto_detect>"
   mqtt_user: "<auto_detect>"
@@ -32,7 +30,7 @@ schema:
   scan_interval: int
   discovery_prefix: str?  # Optionnel
   weather_entity: str?  # Optionnel
-  default_hottest_hour: float(0,23)  # Entre 0 et 23h
+  default_hottest_hour: float(0,23)
   log_level: list(VERBOSE|DEBUG|INFO|WARNING|ERROR)
   mqtt_host: str
   mqtt_port: str

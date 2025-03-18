@@ -75,8 +75,12 @@ class YutampoAddon:
                 f"scan_interval ({scan_interval}) doit être >= 60s. Réglé à 60s."
             )
             scan_interval = 60
-        discovery_prefix = config.get("discovery_prefix", "homeassistant")
-        weather_entity = config.get("weather_entity")
+        discovery_prefix = (
+            config.get("discovery_prefix") or "homeassistant"
+        )  # Valeur par défaut dans le code
+        weather_entity = config.get(
+            "weather_entity"
+        )  # Pas de valeur par défaut, reste None si non spécifié
         default_hottest_hour = config.get("default_hottest_hour", 15.0)
         log_level = config.get("log_level", "INFO")
 

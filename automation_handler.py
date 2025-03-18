@@ -35,7 +35,7 @@ class AutomationHandler:
             next_run_time=datetime.now() + timedelta(seconds=5),
         )
 
-    def set_amJoanplitude(self, amplitude):
+    def set_amplitude(self, amplitude):
         self.amplitude = amplitude
         self.logger.info(f"Amplitude thermique mise à jour : {self.amplitude}°C")
 
@@ -45,10 +45,31 @@ class AutomationHandler:
 
     def _run_automation(self):
         self.logger.debug("Exécution de l'automation interne...")
-        if self.physical_device.mode != "heat":
-            self.logger.debug("Mode non 'heat', automation désactivée.")
+        if self.amplitude <= 0:
+            self.logger.debug("Amplitude thermique = 0, automation désactivée.")
+            # Si l'appareil est en mode "heat", appliquer la consigne sans variation
+            if self.physical_device.mode == "heat":
+                target_temp = self.physical_device.setting_temperature
+                if self.api_client.set_heat_setting(
+                    self.physical_device.parent_id,
+                    run_stop_dhw=1,
+                    setting_temp_dhw=target_temp,
+                ):
+                    self.physical_device.setting_temperature = target_temp
+                    self.mqtt_handler.publish_state(
+                        self.physical_device.id,
+                        self.physical_device.setting_temperature,
+                        self.physical_device.current_temperature,
+                        self.physical_device.mode,
+                        self.physical_device.action,
+                        self.physical_device.operation_label,
+                    )
+                    self.logger.info(f"Consigne fixe appliquée : {target_temp}°C")
+                else:
+                    self.logger.error("Échec de l'application de la consigne fixe")
             return
 
+        # Automation activée si amplitude > 0
         hottest_hour = (
             self.weather_client.get_hottest_hour()
             if self.weather_client
@@ -91,20 +112,21 @@ class AutomationHandler:
         target_temp = round(target_temp, 1)
         self.logger.debug(f"Consigne calculée : {target_temp}°C")
 
-        if self.api_client.set_heat_setting(
-            self.physical_device.parent_id,
-            run_stop_dhw=1,
-            setting_temp_dhw=target_temp,
-        ):
-            self.physical_device.setting_temperature = target_temp
-            self.mqtt_handler.publish_state(
-                self.physical_device.id,
-                self.physical_device.setting_temperature,
-                self.physical_device.current_temperature,
-                self.physical_device.mode,
-                self.physical_device.action,
-                self.physical_device.operation_label,
-            )
-            self.logger.info(f"Consigne appliquée : {target_temp}°C")
-        else:
-            self.logger.error("Échec de l'application de la consigne")
+        if self.physical_device.mode == "heat":
+            if self.api_client.set_heat_setting(
+                self.physical_device.parent_id,
+                run_stop_dhw=1,
+                setting_temp_dhw=target_temp,
+            ):
+                self.physical_device.setting_temperature = target_temp
+                self.mqtt_handler.publish_state(
+                    self.physical_device.id,
+                    self.physical_device.setting_temperature,
+                    self.physical_device.current_temperature,
+                    self.physical_device.mode,
+                    self.physical_device.action,
+                    self.physical_device.operation_label,
+                )
+                self.logger.info(f"Consigne appliquée : {target_temp}°C")
+            else:
+                self.logger.error("Échec de l'application de la consigne")
