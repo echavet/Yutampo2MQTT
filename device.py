@@ -1,5 +1,5 @@
-# device.py
 import logging
+
 
 class Device:
     def __init__(self, id, name, parent_id):
@@ -19,9 +19,12 @@ class Device:
         mqtt_handler.publish_discovery(self)
 
     def update_state(self, mqtt_handler, state_data):
-        """Met à jour l'état et publie via MQTT"""
-        self.setting_temperature = state_data.get("settingTemperature", self.setting_temperature)
-        self.current_temperature = state_data.get("currentTemperature", self.current_temperature)
+        self.setting_temperature = state_data.get(
+            "settingTemperature", self.setting_temperature
+        )
+        self.current_temperature = state_data.get(
+            "currentTemperature", self.current_temperature
+        )
         self.operation_status = state_data.get("operationStatus", 0)
         self.run_stop_dhw = state_data.get("runStopDHW", "N/A")
         self.mode = "heat" if state_data.get("onOff") == 1 else "off"
@@ -55,16 +58,22 @@ class Device:
         self.action = operation_status_map.get(self.operation_status, "idle")
         self.operation_label = operation_label_map.get(self.operation_status, "Inconnu")
 
-        mqtt_handler.publish_state(self.id, self.setting_temperature, self.current_temperature, self.mode, self.action, self.operation_label)
+        mqtt_handler.publish_state(
+            self.id,
+            self.setting_temperature,
+            self.current_temperature,
+            self.mode,
+            self.action,
+            self.operation_label,
+        )
 
     def set_unavailable(self, mqtt_handler):
-        """Marque l'appareil comme indisponible mais conserve les dernières valeurs connues"""
         mqtt_handler.publish_availability(self.id, "offline")
         mqtt_handler.publish_state(
             self.id,
             self.setting_temperature,
             self.current_temperature,
             self.mode,
-            "off",  # Action mise à "off" pour refléter l'indisponibilité
-            self.operation_label
+            "off",
+            self.operation_label,
         )
