@@ -91,8 +91,8 @@ class MqttHandler:
                             device.mode,
                             device.action,
                             device.operation_label,
+                            source="user",
                         )
-                        # Si passage de "off" à "heat", réinitialiser l'automation
                         if (
                             old_mode == "off"
                             and new_mode == "heat"
@@ -112,7 +112,6 @@ class MqttHandler:
                         )
                         return
                     old_temp = device.setting_temperature
-                    # Marquer une demande forcée dans AutomationHandler
                     if self.automation_handler:
                         self.automation_handler.set_forced_setpoint(new_temp)
                     if self.api_client.set_heat_setting(
@@ -129,6 +128,7 @@ class MqttHandler:
                             device.mode,
                             device.action,
                             device.operation_label,
+                            source="user",
                         )
                     else:
                         self.logger.error(
@@ -198,6 +198,7 @@ class MqttHandler:
         mode=None,
         action=None,
         operation_label=None,
+        source="automation",
     ):
         if temperature is not None:
             self.client.publish(
@@ -232,11 +233,14 @@ class MqttHandler:
             ),
             "action": action if action is not None else "",
             "operation_label": operation_label if operation_label is not None else "",
+            "source": source,  # Nouvel attribut pour indiquer la source
         }
         self.client.publish(
             f"yutampo/climate/{device_id}/state", json.dumps(global_state), retain=True
         )
-        self.logger.debug(f"État publié pour {device_id}: {global_state}")
+        self.logger.info(
+            f"État publié pour {device_id} (source: {source}): {global_state}"
+        )
 
     def publish_availability(self, device_id, state):
         self.client.publish(
@@ -267,6 +271,9 @@ class MqttHandler:
             },
         }
         self.client.publish(amplitude_topic, json.dumps(amplitude_payload), retain=True)
+        self.logger.info(
+            f"Publication MQTT Discovery pour input_number/yutampo_amplitude: {json.dumps(amplitude_payload)}"
+        )
         self.publish_input_number_state("yutampo_amplitude", 8)
 
         # Heating duration
@@ -291,6 +298,9 @@ class MqttHandler:
             },
         }
         self.client.publish(duration_topic, json.dumps(duration_payload), retain=True)
+        self.logger.info(
+            f"Publication MQTT Discovery pour input_number/yutampo_heating_duration: {json.dumps(duration_payload)}"
+        )
         self.publish_input_number_state("yutampo_heating_duration", 6)
 
         self.logger.info("Entités input_number publiées via MQTT Discovery.")
