@@ -56,7 +56,7 @@ class MqttHandler:
 
     def _on_message(self, client, userdata, msg):
         self.logger.info(
-            f"Message reçu sur le topic {msg.topic}: {msg.payload.decode()}"
+            f"Commande utilisateur reçue sur le topic {msg.topic}: {msg.payload.decode()}"
         )
         try:
             topic_parts = msg.topic.split("/")
@@ -75,11 +75,15 @@ class MqttHandler:
                     if new_mode not in ["off", "heat"]:
                         self.logger.warning(f"Mode non supporté : {new_mode}")
                         return
+                    old_mode = device.mode
                     run_stop_dhw = 1 if new_mode == "heat" else 0
                     if self.api_client.set_heat_setting(
                         device.parent_id, run_stop_dhw=run_stop_dhw
                     ):
                         device.mode = new_mode
+                        self.logger.info(
+                            f"Changement de mode par l'utilisateur : {old_mode} -> {new_mode}"
+                        )
                         self.publish_state(
                             device.id,
                             device.setting_temperature,
@@ -88,6 +92,16 @@ class MqttHandler:
                             device.action,
                             device.operation_label,
                         )
+                        # Si passage de "off" à "heat", réinitialiser l'automation
+                        if (
+                            old_mode == "off"
+                            and new_mode == "heat"
+                            and self.automation_handler
+                        ):
+                            self.automation_handler.reset_forced_setpoint()
+                            self.logger.info(
+                                "Mode passé de 'off' à 'heat', automation de régulation redémarrée."
+                            )
                     else:
                         self.logger.error(f"Échec de l'application du mode {new_mode}")
                 elif command == "set":
@@ -97,10 +111,17 @@ class MqttHandler:
                             f"Température hors plage (30-60°C) : {new_temp}"
                         )
                         return
+                    old_temp = device.setting_temperature
+                    # Marquer une demande forcée dans AutomationHandler
+                    if self.automation_handler:
+                        self.automation_handler.set_forced_setpoint(new_temp)
                     if self.api_client.set_heat_setting(
                         device.parent_id, setting_temp_dhw=new_temp
                     ):
                         device.setting_temperature = new_temp
+                        self.logger.info(
+                            f"Changement de consigne par l'utilisateur : {old_temp}°C -> {new_temp}°C"
+                        )
                         self.publish_state(
                             device.id,
                             device.setting_temperature,
@@ -124,6 +145,9 @@ class MqttHandler:
                         return
                     self.automation_handler.set_amplitude(amplitude)
                     self.publish_input_number_state(device_id, amplitude)
+                    self.logger.info(
+                        f"Changement d'amplitude par l'utilisateur : {amplitude}°C"
+                    )
                 elif device_id == "yutampo_heating_duration":
                     duration = float(payload)
                     if not (1 <= duration <= 24):
@@ -131,6 +155,9 @@ class MqttHandler:
                         return
                     self.automation_handler.set_heating_duration(duration)
                     self.publish_input_number_state(device_id, duration)
+                    self.logger.info(
+                        f"Changement de durée de chauffe par l'utilisateur : {duration}h"
+                    )
         except Exception as e:
             self.logger.error(f"Erreur lors du traitement du message : {str(e)}")
 
@@ -199,9 +226,9 @@ class MqttHandler:
 
         global_state = {
             "mode": mode if mode is not None else "",
-            "temperature": temperature if temperature is not None else 0,
+            "temperature": float(temperature) if temperature is not None else 0,
             "current_temperature": (
-                current_temperature if current_temperature is not None else 0
+                float(current_temperature) if current_temperature is not None else 0
             ),
             "action": action if action is not None else "",
             "operation_label": operation_label if operation_label is not None else "",
@@ -209,7 +236,7 @@ class MqttHandler:
         self.client.publish(
             f"yutampo/climate/{device_id}/state", json.dumps(global_state), retain=True
         )
-        self.logger.info(f"État publié pour {device_id}: {global_state}")
+        self.logger.debug(f"État publié pour {device_id}: {global_state}")
 
     def publish_availability(self, device_id, state):
         self.client.publish(
@@ -240,7 +267,7 @@ class MqttHandler:
             },
         }
         self.client.publish(amplitude_topic, json.dumps(amplitude_payload), retain=True)
-        self.publish_input_number_state("yutampo_amplitude", 8)  # Valeur par défaut
+        self.publish_input_number_state("yutampo_amplitude", 8)
 
         # Heating duration
         duration_topic = (
@@ -264,9 +291,7 @@ class MqttHandler:
             },
         }
         self.client.publish(duration_topic, json.dumps(duration_payload), retain=True)
-        self.publish_input_number_state(
-            "yutampo_heating_duration", 6
-        )  # Valeur par défaut
+        self.publish_input_number_state("yutampo_heating_duration", 6)
 
         self.logger.info("Entités input_number publiées via MQTT Discovery.")
 
