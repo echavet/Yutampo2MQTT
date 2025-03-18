@@ -50,7 +50,7 @@ class AutomationHandler:
         """Définir une consigne forcée par l'utilisateur via climate."""
         self.forced_setpoint = forced_setpoint
         self.logger.info(
-            f"Demande forcée détectée : consigne définie à {self.forced_setpoint}°C"
+            f"Demande forcée détectée : consigne définie à {self.forced_setpoint}°C, automation de régulation désactivée."
         )
         self._apply_forced_setpoint()
 
@@ -96,17 +96,18 @@ class AutomationHandler:
                 return
             if abs(current_temp - self.forced_setpoint) <= 1.0:  # Tolérance de 1°C
                 self.logger.info(
-                    f"Consigne forcée {self.forced_setpoint}°C atteinte, reprise de l'automation."
+                    f"Consigne forcée {self.forced_setpoint}°C atteinte (actuel : {current_temp}°C), reprise de l'automation normale."
                 )
                 self.forced_setpoint = None
             else:
                 self.logger.info(
-                    f"Consigne forcée {self.forced_setpoint}°C non atteinte (actuel : {current_temp}°C), automation désactivée."
+                    f"Consigne forcée {self.forced_setpoint}°C non atteinte (actuel : {current_temp}°C), automation reste désactivée."
                 )
                 self._apply_forced_setpoint()
                 return
 
         # Automation normale si pas de consigne forcée
+        self.logger.info("Automation normale en cours.")
         if self.amplitude <= 0:
             self.logger.debug("Amplitude thermique = 0, automation désactivée.")
             if self.physical_device.mode == "heat":
