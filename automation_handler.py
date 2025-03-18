@@ -11,6 +11,7 @@ class AutomationHandler:
         mqtt_handler,
         physical_device,
         weather_client,
+        setpoint,
         amplitude,
         heating_duration,
     ):
@@ -20,6 +21,7 @@ class AutomationHandler:
         self.physical_device = physical_device
         self.weather_client = weather_client
         self.scheduler = BackgroundScheduler()
+        self.setpoint = setpoint  # Setpoint fixe depuis la config
         self.amplitude = amplitude  # Amplitude de variation thermique
         self.heating_duration = heating_duration  # Durée de chauffe en heures
 
@@ -47,16 +49,9 @@ class AutomationHandler:
         self.logger.debug("Exécution de l'automation interne...")
         if self.amplitude <= 0:
             self.logger.debug("Amplitude thermique = 0, automation désactivée.")
-            # Si l'appareil est en mode "heat", appliquer la consigne sans variation
+            # Si l'appareil est en mode "heat", appliquer le setpoint fixe
             if self.physical_device.mode == "heat":
-                target_temp = self.physical_device.setting_temperature
-                if target_temp is None:
-                    target_temp = (
-                        50.0  # Valeur par défaut temporaire si non initialisée
-                    )
-                    self.logger.warning(
-                        "Consigne non initialisée, utilisation de 50°C par défaut."
-                    )
+                target_temp = self.setpoint
                 if self.api_client.set_heat_setting(
                     self.physical_device.parent_id,
                     run_stop_dhw=1,
@@ -93,13 +88,7 @@ class AutomationHandler:
         if end_hour >= 24:
             end_hour -= 24
 
-        target_temp = self.physical_device.setting_temperature
-        if target_temp is None:
-            target_temp = 50.0  # Valeur par défaut temporaire si non initialisée
-            self.logger.warning(
-                "Consigne non initialisée, utilisation de 50°C par défaut."
-            )
-
+        target_temp = self.setpoint  # Utilisation du setpoint configuré
         temp_min = target_temp - self.amplitude
 
         self.logger.info(f"Heure la plus chaude : {hottest_hour:.2f}h")
