@@ -75,19 +75,19 @@ class YutampoAddon:
                 f"scan_interval ({scan_interval}) doit être >= 60s. Réglé à 60s."
             )
             scan_interval = 60
-        discovery_prefix = (
-            config.get("discovery_prefix") or "homeassistant"
-        )  # Valeur par défaut dans le code
-        weather_entity = config.get(
-            "weather_entity"
-        )  # Pas de valeur par défaut, reste None si non spécifié
+        discovery_prefix = config.get("discovery_prefix") or "homeassistant"
+        weather_entity = config.get("weather_entity")
         default_hottest_hour = config.get("default_hottest_hour", 15.0)
+        setpoint = config.get(
+            "setpoint", 50.0
+        )  # Nouveau paramètre avec valeur par défaut
         log_level = config.get("log_level", "INFO")
 
         return {
             "username": config.get("username"),
             "password": config.get("password"),
             "scan_interval": scan_interval,
+            "setpoint": setpoint,
             "mqtt_host": mqtt_host,
             "mqtt_port": int(mqtt_port),
             "mqtt_user": mqtt_user,
@@ -125,8 +125,9 @@ class YutampoAddon:
                 self.mqtt_handler,
                 self.devices[0],
                 self.weather_client,
-                amplitude=8,  # Valeur par défaut
-                heating_duration=6,  # Valeur par défaut
+                setpoint=self.config["setpoint"],  # Passage du setpoint configuré
+                amplitude=8,
+                heating_duration=6,
             )
             self.mqtt_handler.automation_handler = self.automation_handler
             self.weather_client.start()
