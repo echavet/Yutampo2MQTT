@@ -1,4 +1,3 @@
-# api_client.py
 import requests
 from bs4 import BeautifulSoup
 from device import Device
@@ -70,13 +69,11 @@ class ApiClient:
         return token["value"] if token else ""
 
     def _reset_session_and_authenticate(self):
-        """Renouvelle la session et effectue une authentification complète."""
         self.logger.debug("Renouvellement de la session et réauthentification...")
         self.session = requests.Session()
         return self.authenticate()
 
     def _handle_response(self, response, attempt, max_retries):
-        """Vérifie la réponse HTTP et JSON, retourne les données ou None si échec."""
         if response.status_code != 200:
             self.logger.warning(
                 f"Code HTTP inattendu: {response.status_code}. Réponse: {response.text[:200]}"
@@ -125,14 +122,12 @@ class ApiClient:
                 if data is not None:
                     return data
 
-                # Si échec, renouveler la session et réauthentifier dès la première erreur
                 if not self._reset_session_and_authenticate():
                     self.logger.error("Échec de la réauthentification.")
                     if attempt == max_retries:
                         return None
                     continue
 
-                # Nouvelle tentative après réauthentification
                 response = self.session.get(f"{self.BASE_URL}/data/elements")
                 data = self._handle_response(response, attempt, max_retries)
                 if data is not None:
@@ -199,9 +194,7 @@ class ApiClient:
                 self.logger.warning(
                     f"Erreur {response.status_code}, réauthentification requise..."
                 )
-                if (
-                    self._reset_session_and_authenticate()
-                ):  # Utilisation de la méthode factorisée
+                if self._reset_session_and_authenticate():
                     return self.set_heat_setting(
                         indoor_id, run_stop_dhw, setting_temp_dhw
                     )

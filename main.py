@@ -1,4 +1,5 @@
 # main.py
+import sys
 import logging
 from datetime import datetime
 from yutampo_addon import YutampoAddon
@@ -7,22 +8,15 @@ from yutampo_addon import YutampoAddon
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger("Yutampo_ha_addon")
 
-# Codes ANSI pour les couleurs
-class Colors:
-    GREEN = '\033[92m'
-    BLUE = '\033[94m'
-    RESET = '\033[0m'
 
 def log_startup_message():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
     border = "*" * (len(msg) + 4)
-    framed_message = (
-        f"{Colors.BLUE}{border}{Colors.RESET}\n"
-        f"{Colors.BLUE}* {Colors.GREEN}{msg}{Colors.BLUE} *{Colors.RESET}\n"
-        f"{Colors.BLUE}{border}{Colors.RESET}"
-    )
-    LOGGER.info(framed_message)
+    framed_message = f"\n{border}\n* {msg} *\n{border}"
+
+    print(f"INFO: {framed_message}", file=sys.stdout)
+
 
 if __name__ == "__main__":
     log_startup_message()
