@@ -76,34 +76,32 @@ class MqttHandler:
                         self.logger.warning(f"Mode non supporté : {new_mode}")
                         return
                     old_mode = device.mode
-                    run_stop_dhw = 1 if new_mode == "heat" else 0
-                    if self.api_client.set_heat_setting(
-                        device.parent_id, run_stop_dhw=run_stop_dhw
-                    ):
-                        device.mode = new_mode
-                        self.logger.info(
-                            f"Changement de mode par l'utilisateur : {old_mode} -> {new_mode}"
-                        )
-                        self.publish_state(
-                            device.id,
-                            device.setting_temperature,
-                            device.current_temperature,
-                            device.mode,
-                            device.action,
-                            device.operation_label,
-                            source="user",
-                        )
-                        if (
-                            old_mode == "off"
-                            and new_mode == "heat"
-                            and self.automation_handler
-                        ):
-                            self.automation_handler.reset_forced_setpoint()
-                            self.logger.info(
-                                "Mode passé de 'off' à 'heat', automation de régulation redémarrée."
-                            )
+                    if self.automation_handler:
+                        # Utiliser set_mode pour gérer le changement de mode
+                        self.automation_handler.set_mode(new_mode)
                     else:
-                        self.logger.error(f"Échec de l'application du mode {new_mode}")
+                        # Fallback si pas d'automation_handler
+                        run_stop_dhw = 1 if new_mode == "heat" else 0
+                        if self.api_client.set_heat_setting(
+                            device.parent_id, run_stop_dhw=run_stop_dhw
+                        ):
+                            device.mode = new_mode
+                            self.logger.info(
+                                f"Changement de mode par l'utilisateur : {old_mode} -> {new_mode}"
+                            )
+                            self.publish_state(
+                                device.id,
+                                device.setting_temperature,
+                                device.current_temperature,
+                                device.mode,
+                                device.action,
+                                device.operation_label,
+                                source="user",
+                            )
+                        else:
+                            self.logger.error(
+                                f"Échec de l'application du mode {new_mode}"
+                            )
                 elif command == "set":
                     new_temp = float(payload)
                     if not (30 <= new_temp <= 60):
