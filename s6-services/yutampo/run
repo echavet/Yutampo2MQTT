@@ -1,2 +1,3 @@
+# s6-services/yutampo/run
 #!/usr/bin/with-contenv bashio
-exec /app/run.sh
+exec /app/run-wrapper.sh
