@@ -1,4 +1,5 @@
 import logging
+import sys
 from datetime import datetime
 from yutampo_addon import YutampoAddon
 
@@ -30,7 +31,8 @@ class ColoredFormatter(logging.Formatter):
         return msg
 
 
-handler = logging.StreamHandler()
+# Utiliser un StreamHandler qui écrit sur stderr
+handler = logging.StreamHandler(stream=sys.stderr)
 handler.setFormatter(ColoredFormatter())
 logger.handlers = [handler]
 
