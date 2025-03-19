@@ -6,7 +6,11 @@ import logging
 class MqttHandler:
     def __init__(self, config, api_client=None):
         self.logger = logging.getLogger("Yutampo_ha_addon")
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(client_id="yutampo_addon", protocol=mqtt.MQTTv311)
+        self.client.will_set(
+            topic="yutampo/status", payload="offline", qos=1, retain=True
+        )
+
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.mqtt_host = config["mqtt_host"]
@@ -37,6 +41,12 @@ class MqttHandler:
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.logger.info("Connecté au broker MQTT")
+            self.client.publish(
+                topic="yutampo/status", payload="online", qos=1, retain=True
+            )
+            for device_id in self.devices:
+                self.publish_availability(device_id, "online")
+
             self.subscribe_topics()
         else:
             self.logger.error(
@@ -173,7 +183,12 @@ class MqttHandler:
             "mode_state_topic": f"yutampo/climate/{device.id}/mode",
             "mode_command_topic": f"yutampo/climate/{device.id}/mode/set",
             "action_topic": f"yutampo/climate/{device.id}/hvac_action",
-            "availability_topic": f"yutampo/climate/{device.id}/availability",
+            "availability": [
+                {"topic": f"yutampo/climate/{device.id}/availability"},
+                {"topic": "yutampo/status"},
+            ],
+            "payload_available": "online",
+            "payload_not_available": "offline",
             "min_temp": 30,
             "max_temp": 60,
             "temp_step": 1,

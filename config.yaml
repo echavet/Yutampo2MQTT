@@ -1,5 +1,5 @@
 name: "Yutampo2MQTT HA Addon"
-version: "3.4.6"  
+version: "3.4.7"  
 slug: "yutampo2mqtt"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet avec automation interne"
 services:
@@ -19,6 +19,7 @@ options:
   scan_interval: 300  
   setpoint: 50.0
   default_hottest_hour: 15.0
+  heating_duration_hours: 6.0
   log_level: "DEBUG"
   mqtt_host: "<auto_detect>"
   mqtt_port: "<auto_detect>"
@@ -33,7 +34,8 @@ schema:
   discovery_prefix: str?
   weather_entity: str?
   default_hottest_hour: float(0,23)
-  regulation_amplitude: float?  
+  regulation_amplitude: float?    
+  heating_duration_hours: float(1,24)
   log_level: list(VERBOSE|DEBUG|INFO|WARNING|ERROR)
   mqtt_host: str
   mqtt_port: str
