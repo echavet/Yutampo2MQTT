@@ -14,10 +14,9 @@ def log_startup_message():
     msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
     border = "*" * (len(msg) + 4)
     framed_message = f"\n{border}\n* {msg} *\n{border}"
-    # Exécuter la commande avec subprocess
-    subprocess.run(
-        ["/usr/bin/with-contenv", "bashio::log.info", framed_message], check=True
-    )
+    # Exécuter bashio::log.info dans un shell avec l'environnement chargé
+    command = f"/usr/bin/with-contenv bash -c 'source /etc/bashio/bashio.sh && bashio::log.info \"{framed_message}\"'"
+    subprocess.run(command, shell=True, check=True)
 
 
 if __name__ == "__main__":
