@@ -13,10 +13,10 @@ def log_startup_message():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
     border = "*" * (len(msg) + 4)
-    # Formatter le message avec des retours à la ligne explicites pour bash
+    # Échapper les caractères pour le shell
     framed_message = f"\\n{border}\\n* {msg} *\\n{border}"
-    # Commande avec guillemets simples et échappement strict
-    command = f"/usr/bin/with-contenv bash -c \"source /etc/bashio/bashio.sh && bashio::log.info '{framed_message}'\""
+    # Utiliser guillemets doubles partout avec échappement
+    command = f'/usr/bin/with-contenv bash -c "source /etc/bashio/bashio.sh && bashio::log.info \\"{framed_message}\\""'
     subprocess.run(command, shell=True, check=True)
 
 
