@@ -1,2 +1,3 @@
+# s6-services/yutampo-log/run
 #!/usr/bin/execlineb -P
-s6-log -b n10 s1000000 /var/log/yutampo
+s6-tail -f /var/log/yutampo.log
