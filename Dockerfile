@@ -12,8 +12,17 @@ WORKDIR /app
 # Copie du code source
 COPY . /app
 
-RUN chmod +x /app/run.sh
+# Copie des fichiers de service s6-overlay
+COPY s6-services /etc/s6-overlay/s6-rc.d/
+
+
+# Rendre les scripts exécutables
+RUN chmod +x /app/run.sh && \
+    chmod +x /app/rc-init-wrapper.sh && \
+    chmod +x /etc/s6-overlay/s6-rc.d/yutampo-log/run
 
 # Exécution du script principal
+# CMD [ "/app/run.sh" ]
 
-CMD [ "/app/run.sh" ]
+# Exécution du script principal via le wrapper
+CMD [ "/app/rc-init-wrapper.sh" ]
