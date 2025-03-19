@@ -21,8 +21,10 @@ def log_startup_message():
     msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
     border = "*" * (len(msg) + 4)
     framed_message = f"\\n{border}\\n* {msg} *\\n{border}"
-    # Mettre à jour le chemin correct ici
-    command = f'/usr/bin/with-contenv bash -c "source /usr/lib/bashio/bashio.sh && bashio::log.info \\"{framed_message}\\""'
+    # Rediriger explicitement stderr vers stdout
+    command = (
+        f'/usr/bin/with-contenv bash -c "bashio::log.info \\"{framed_message}\\"" 2>&1'
+    )
     subprocess.run(command, shell=True, check=True)
 
 
