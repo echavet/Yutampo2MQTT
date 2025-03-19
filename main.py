@@ -1,5 +1,5 @@
 # main.py
-import os
+import subprocess
 import logging
 from datetime import datetime
 from yutampo_addon import YutampoAddon
@@ -14,8 +14,10 @@ def log_startup_message():
     msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
     border = "*" * (len(msg) + 4)
     framed_message = f"\n{border}\n* {msg} *\n{border}"
-    # Utilisation de os.system pour exécuter la commande bashio
-    os.system(f"bashio::log.info '{framed_message}'")
+    # Exécuter la commande avec subprocess
+    subprocess.run(
+        ["/usr/bin/with-contenv", "bashio::log.info", framed_message], check=True
+    )
 
 
 if __name__ == "__main__":
