@@ -80,6 +80,7 @@ class YutampoAddon:
         default_hottest_hour = config.get("default_hottest_hour", 15.0)
         setpoint = config.get("setpoint", 50.0)
         regulation_amplitude = config.get("regulation_amplitude")  # None si non défini
+        heating_duration_hours = config.get("heating_duration_hours", 6.0)
         log_level = config.get("log_level", "INFO")
 
         return {
@@ -87,7 +88,8 @@ class YutampoAddon:
             "password": config.get("password"),
             "scan_interval": scan_interval,
             "setpoint": setpoint,
-            "regulation_amplitude": regulation_amplitude,  # Nouveau paramètre
+            "regulation_amplitude": regulation_amplitude,
+            "heating_duration_hours": heating_duration_hours,
             "mqtt_host": mqtt_host,
             "mqtt_port": int(mqtt_port),
             "mqtt_user": mqtt_user,
@@ -101,7 +103,6 @@ class YutampoAddon:
 
     def start(self):
         self.logger.info("Démarrage de l'addon...")
-        self.mqtt_handler.connect()
 
         if not self.api_client.authenticate():
             self.logger.error("Échec de l'authentification. Arrêt.")
@@ -113,6 +114,9 @@ class YutampoAddon:
             exit(1)
 
         self.devices = devices_data
+
+        self.mqtt_handler.connect()
+
         for device in self.devices:
             device.register(self.mqtt_handler)
 
@@ -134,7 +138,7 @@ class YutampoAddon:
                     f"Amplitude de régulation thermique non définie dans les options, utilisation de la valeur par défaut : {initial_amplitude}°C"
                 )
 
-            initial_heating_duration = 6  # Valeur par défaut fixe
+            initial_heating_duration = self.config.get("heating_duration_hours", 6.0)
 
             self.automation_handler = AutomationHandler(
                 self.api_client,
@@ -154,12 +158,19 @@ class YutampoAddon:
             while True:
                 time.sleep(1)
         except (KeyboardInterrupt, SystemExit):
-            self.scheduler.shutdown()
-            if self.automation_handler:
-                self.automation_handler.scheduler.shutdown()
-            self.weather_client.shutdown()
-            self.mqtt_handler.disconnect()
-            self.logger.info("Arrêt du programme.")
+            self.shutdown()
+
+    def shutdown(self):
+        self.logger.info("Arrêt de l'addon...")
+        # Mettre toutes les entités en indisponible
+        for device in self.devices:
+            device.set_unavailable(self.mqtt_handler)
+        self.scheduler.shutdown()
+        if self.automation_handler:
+            self.automation_handler.scheduler.shutdown()
+        self.weather_client.shutdown()
+        self.mqtt_handler.disconnect()
+        self.logger.info("Arrêt du programme.")
 
 
 if __name__ == "__main__":
