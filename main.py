@@ -1,48 +1,16 @@
-import logging
-import sys
+import subprocess
 from datetime import datetime
 from yutampo_addon import YutampoAddon
-
-# Codes ANSI pour les couleurs
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RED = "\033[31m"
-RESET = "\033[0m"
-
-# Configuration du logger avec horodatage
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="[%(asctime)s] %(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger("YutampoAddon")
-
-
-# Formatter pour ajouter des couleurs
-class ColoredFormatter(logging.Formatter):
-    def format(self, record):
-        msg = super().format(record)
-        if record.levelno == logging.INFO:
-            return f"{GREEN}{msg}{RESET}"
-        elif record.levelno == logging.WARNING:
-            return f"{YELLOW}{msg}{RESET}"
-        elif record.levelno == logging.ERROR:
-            return f"{RED}{msg}{RESET}"
-        return msg
-
-
-# Utiliser un StreamHandler qui écrit sur stderr
-handler = logging.StreamHandler(stream=sys.stderr)
-handler.setFormatter(ColoredFormatter())
-logger.handlers = [handler]
 
 
 def log_startup_message():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     msg = f"Démarrage de l'addon Yutampo HA - {timestamp}"
     border = "*" * (len(msg) + 4)
-    framed_message = f"\n{border}\n* {msg} *\n{border}"
-    logger.info(framed_message)
+    framed_message = f"\\n{border}\\n* {msg} *\\n{border}"
+    # Charger bashio explicitement et appeler bashio::log.info
+    command = f'/usr/bin/with-contenv bash -c "source /usr/lib/bashio/bashio.sh && bashio::log.info \\"{framed_message}\\"" 2>&1'
+    subprocess.run(command, shell=True, check=True)
 
 
 if __name__ == "__main__":
