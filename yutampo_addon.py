@@ -123,6 +123,7 @@ class YutampoAddon:
 
         self.scheduler.schedule_updates(self.devices, self.config["scan_interval"])
         self.mqtt_handler.register_input_numbers()
+        self.mqtt_handler.register_sensors()
 
         if self.devices:
             # Initialisation de l'amplitude : priorité aux options, sinon valeur par défaut
@@ -156,10 +157,15 @@ class YutampoAddon:
             self.automation_handler.start()
 
             # Publier les états initiaux des capteurs
+            self.logger.info(
+                "Publication des états initiaux pour toutes les entités..."
+            )
             self.mqtt_handler.publish_sensor_states(
                 self.weather_client.get_hottest_hour(),
                 self.weather_client.get_hottest_temperature(),
             )
+            self.mqtt_handler.publish_input_number_state("yutampo_amplitude", 8)
+            self.mqtt_handler.publish_input_number_state("yutampo_heating_duration", 6)
 
         self.logger.info("Addon démarré. Appuyez sur Ctrl+C pour arrêter.")
         try:
