@@ -155,6 +155,9 @@ class WeatherClient:
     def get_hottest_hour(self):
         return self.hottest_hour
 
+    def get_hottest_temperature(self):
+        return self.hottest_temperature
+
     def shutdown(self):
         self.scheduler.shutdown()
         if self.ws:
