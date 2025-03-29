@@ -41,6 +41,7 @@ class YutampoAddon:
         self.scheduler = Scheduler(self.api_client, self.mqtt_handler)
         self.devices = []
         self.weather_client = WeatherClient(self.config)
+        self.weather_client.mqtt_handler = self.mqtt_handler
         self.automation_handler = None
 
     def _load_config(self, config_path):
@@ -151,7 +152,14 @@ class YutampoAddon:
             )
             self.mqtt_handler.automation_handler = self.automation_handler
             self.weather_client.start()
+            self.mqtt_handler.register_sensors()
             self.automation_handler.start()
+
+            # Publier les états initiaux des capteurs
+            self.mqtt_handler.publish_sensor_states(
+                self.weather_client.get_hottest_hour(),
+                self.weather_client.get_hottest_temperature(),
+            )
 
         self.logger.info("Addon démarré. Appuyez sur Ctrl+C pour arrêter.")
         try:

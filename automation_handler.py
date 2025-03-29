@@ -25,8 +25,11 @@ class AutomationHandler:
         self.amplitude = amplitude
         self.heating_duration = heating_duration
         self.forced_setpoint = None
+        self.locked_hottest_hour = None
+        self.last_recalculation_date = None
 
     def start(self):
+        self._recalculate_hottest_hour()  # Recalcul initial
         self._schedule_automation()
         self.scheduler.start()
         self.logger.info(
@@ -39,6 +42,25 @@ class AutomationHandler:
             trigger=IntervalTrigger(minutes=5),
             next_run_time=datetime.now() + timedelta(seconds=5),
         )
+        self.scheduler.add_job(
+            self._recalculate_hottest_hour,
+            trigger="cron",
+            hour=0,
+            minute=0,
+            next_run_time=datetime.now() if datetime.now().hour >= 0 else None,
+        )
+
+    def _recalculate_hottest_hour(self):
+        current_date = datetime.now().date()
+        if self.weather_client and self.last_recalculation_date != current_date:
+            self.locked_hottest_hour = self.weather_client.get_hottest_hour()
+            self.last_recalculation_date = current_date
+            self.logger.info(
+                f"Heure la plus chaude verrouillée pour aujourd'hui : {self.locked_hottest_hour:.2f}h"
+            )
+        elif not self.weather_client:
+            self.locked_hottest_hour = self.mqtt_handler.default_hottest_hour
+            self.last_recalculation_date = current_date
 
     def set_forced_setpoint(self, forced_setpoint):
         self.forced_setpoint = forced_setpoint
@@ -125,10 +147,15 @@ class AutomationHandler:
             )
             return self.setpoint
 
+        # Utiliser l’heure verrouillée ou la valeur par défaut si non encore calculée
         hottest_hour = (
-            self.weather_client.get_hottest_hour()
-            if self.weather_client
-            else self.mqtt_handler.default_hottest_hour
+            self.locked_hottest_hour
+            if self.locked_hottest_hour is not None
+            else (
+                self.weather_client.get_hottest_hour()
+                if self.weather_client
+                else self.mqtt_handler.default_hottest_hour
+            )
         )
         start_hour, end_hour = self._get_heating_window(hottest_hour)
         current_hour = self._get_current_hour()
@@ -175,30 +202,27 @@ class AutomationHandler:
     ):
         target_temp = self.setpoint
         temp_min = target_temp - self.amplitude
-        if current_hour >= start_hour:
-            if current_hour <= hottest_hour:
-                progress = (current_hour - start_hour) / (self.heating_duration / 2)
-                target_temp = temp_min + (target_temp - temp_min) * progress
-            else:
-                progress = (end_hour - current_hour) / (self.heating_duration / 2)
-                target_temp = temp_min + (target_temp - temp_min) * progress
-        else:
-            adjusted_current_hour = (
-                current_hour + 24 if current_hour < start_hour else current_hour
-            )
-            adjusted_hottest_hour = (
+        half_duration = self.heating_duration / 2
+
+        # Normalisation des heures pour éviter les problèmes de chevauchement sur minuit
+        if start_hour > end_hour:  # Plage chevauchant minuit
+            if current_hour < end_hour:
+                current_hour += 24
+            hottest_hour = (
                 hottest_hour + 24 if hottest_hour < start_hour else hottest_hour
             )
-            if adjusted_current_hour <= adjusted_hottest_hour:
-                progress = (adjusted_current_hour - start_hour) / (
-                    self.heating_duration / 2
-                )
-                target_temp = temp_min + (target_temp - temp_min) * progress
-            else:
-                progress = (end_hour + 24 - adjusted_current_hour) / (
-                    self.heating_duration / 2
-                )
-                target_temp = temp_min + (target_temp - temp_min) * progress
+
+        # Calcul linéaire de la progression
+        if current_hour <= hottest_hour:
+            # Montée vers la consigne maximale
+            progress = (current_hour - start_hour) / half_duration
+        else:
+            # Descente vers la température minimale
+            progress = (end_hour - current_hour) / half_duration
+
+        # Assurer que progress reste entre 0 et 1
+        progress = max(0, min(1, progress))
+        target_temp = temp_min + (self.amplitude * progress)
         return round(target_temp, 1)
 
     def _apply_target_temperature(self, target_temp):

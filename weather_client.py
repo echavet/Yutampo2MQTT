@@ -31,6 +31,7 @@ class WeatherClient:
         self.ws_thread = None
         self.message_id = 1
         self.connected = False
+        self.hottest_temperature = None
 
     def start(self):
         if not self.weather_entity:
@@ -123,6 +124,7 @@ class WeatherClient:
         if not forecast:
             self.logger.error("Prévisions vides, utilisation de default_hottest_hour.")
             self.hottest_hour = self.default_hottest_hour
+            self.hottest_temperature = None
             return
 
         hottest_temp = float("-inf")
@@ -137,7 +139,18 @@ class WeatherClient:
                 hottest_hour = hour
 
         self.hottest_hour = hottest_hour
-        self.logger.info(f"Heure la plus chaude mise à jour : {self.hottest_hour:.2f}h")
+        self.hottest_temperature = (
+            hottest_temp if hottest_temp != float("-inf") else None
+        )
+
+        self.logger.info(
+            f"Heure la plus chaude : {self.hottest_hour:.2f}h, Température : {self.hottest_temperature}°C"
+        )
+        # Publier les nouveaux états via MQTT
+        if hasattr(self, "mqtt_handler"):  # Vérifier si mqtt_handler est défini
+            self.mqtt_handler.publish_sensor_states(
+                self.hottest_hour, self.hottest_temperature
+            )
 
     def get_hottest_hour(self):
         return self.hottest_hour

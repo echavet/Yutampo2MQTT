@@ -1,2 +1,0 @@
-#!/usr/bin/execlineb -P
-s6-log -b n10 s1000000 /var/log/yutampo

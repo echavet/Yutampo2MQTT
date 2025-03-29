@@ -326,3 +326,67 @@ class MqttHandler:
     def disconnect(self):
         self.client.loop_stop()
         self.client.disconnect()
+
+    def register_sensors(self):
+        # Capteur pour l'heure la plus chaude
+        hottest_hour_topic = (
+            f"{self.discovery_prefix}/sensor/yutampo_hottest_hour/config"
+        )
+        hottest_hour_payload = {
+            "name": "Yutampo Heure la Plus Chaude",
+            "unique_id": "yutampo_hottest_hour",
+            "state_topic": "yutampo/sensor/yutampo_hottest_hour/state",
+            "unit_of_measurement": "h",
+            "retain": True,
+            "device": {
+                "identifiers": ["yutampo_settings"],
+                "name": "Yutampo Settings",
+                "manufacturer": "Yutampo",
+                "model": "Settings",
+            },
+        }
+        self.client.publish(
+            hottest_hour_topic, json.dumps(hottest_hour_payload), retain=True
+        )
+        self.logger.info("Capteur MQTT Discovery publié pour yutampo_hottest_hour")
+
+        # Capteur pour la température la plus chaude
+        hottest_temp_topic = (
+            f"{self.discovery_prefix}/sensor/yutampo_hottest_temperature/config"
+        )
+        hottest_temp_payload = {
+            "name": "Yutampo Température la Plus Chaude",
+            "unique_id": "yutampo_hottest_temperature",
+            "state_topic": "yutampo/sensor/yutampo_hottest_temperature/state",
+            "unit_of_measurement": "°C",
+            "retain": True,
+            "device": {
+                "identifiers": ["yutampo_settings"],
+                "name": "Yutampo Settings",
+                "manufacturer": "Yutampo",
+                "model": "Settings",
+            },
+        }
+        self.client.publish(
+            hottest_temp_topic, json.dumps(hottest_temp_payload), retain=True
+        )
+        self.logger.info(
+            "Capteur MQTT Discovery publié pour yutampo_hottest_temperature"
+        )
+
+    def publish_sensor_states(self, hottest_hour, hottest_temperature):
+        # Publication de l'heure la plus chaude
+        self.client.publish(
+            "yutampo/sensor/yutampo_hottest_hour/state",
+            str(round(hottest_hour, 2)) if hottest_hour is not None else "unknown",
+            retain=True,
+        )
+        # Publication de la température la plus chaude
+        self.client.publish(
+            "yutampo/sensor/yutampo_hottest_temperature/state",
+            str(hottest_temperature) if hottest_temperature is not None else "unknown",
+            retain=True,
+        )
+        self.logger.debug(
+            f"États des capteurs publiés : heure={hottest_hour}, temp={hottest_temperature}"
+        )
