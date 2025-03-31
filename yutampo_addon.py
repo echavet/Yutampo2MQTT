@@ -22,6 +22,7 @@ logging.Logger.verbose = verbose
 
 class YutampoAddon:
     VALID_LOG_LEVELS = ["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR"]
+    VALID_REGULATION_MODES = ["gradual", "step"]
 
     def __init__(self, config_path="/data/options.json"):
         logging.basicConfig(level=logging.INFO)
@@ -84,6 +85,13 @@ class YutampoAddon:
         heating_duration_hours = config.get("heating_duration_hours", 6.0)
         log_level = config.get("log_level", "INFO")
 
+        regulation = config.get("regulation", "gradual").lower()  # Par défaut "gradual"
+        if regulation not in self.VALID_REGULATION_MODES:
+            self.logger.warning(
+                f"Mode de régulation invalide '{regulation}', utilisation de 'gradual'."
+            )
+            regulation = "step"
+
         return {
             "username": config.get("username"),
             "password": config.get("password"),
@@ -100,6 +108,7 @@ class YutampoAddon:
             "weather_entity": weather_entity,
             "default_hottest_hour": default_hottest_hour,
             "log_level": log_level,
+            "regulation": regulation,
         }
 
     def start(self):
@@ -150,6 +159,7 @@ class YutampoAddon:
                 setpoint=self.config["setpoint"],
                 amplitude=initial_amplitude,
                 heating_duration=initial_heating_duration,
+                regulation_mode=self.config["regulation"],
             )
             self.mqtt_handler.automation_handler = self.automation_handler
             self.weather_client.start()

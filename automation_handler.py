@@ -5,6 +5,7 @@ import logging
 
 
 class AutomationHandler:
+
     def __init__(
         self,
         api_client,
@@ -14,6 +15,7 @@ class AutomationHandler:
         setpoint,
         amplitude,
         heating_duration,
+        regulation_mode="step",
     ):
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.api_client = api_client
@@ -24,6 +26,7 @@ class AutomationHandler:
         self.setpoint = setpoint
         self.amplitude = amplitude
         self.heating_duration = heating_duration
+        self.regulation_mode = regulation_mode
         self.forced_setpoint = None
         self.locked_hottest_hour = None
         self.last_recalculation_date = None
@@ -161,10 +164,19 @@ class AutomationHandler:
         current_hour = self._get_current_hour()
 
         self._log_heating_info(hottest_hour, start_hour, end_hour)
+
         if self._is_within_heating_window(current_hour, start_hour, end_hour):
-            return self._compute_temperature_during_heating(
-                current_hour, start_hour, end_hour, hottest_hour
-            )
+            if self.regulation_mode == "step":
+                # Mode "step" : consigne directement à setpoint
+                self.logger.debug(
+                    "Mode 'step' : consigne fixée directement à setpoint."
+                )
+                return self.setpoint
+            else:
+                # Mode "gradual" : calcul linéaire comme avant
+                return self._compute_temperature_during_heating(
+                    current_hour, start_hour, end_hour, hottest_hour
+                )
         return self.setpoint - self.amplitude
 
     def _get_heating_window(self, hottest_hour):
