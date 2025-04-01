@@ -4,6 +4,77 @@ import logging
 import time
 
 
+# Constantes pour les payloads des capteurs
+DEVICE_INFO = {
+    "identifiers": ["yutampo_settings"],
+    "name": "Yutampo Settings",
+    "manufacturer": "Yutampo",
+    "model": "Settings",
+}
+
+HOTTEST_HOUR_PAYLOAD = {
+    "name": "Yutampo Heure la Plus Chaude",
+    "unique_id": "yutampo_hottest_hour",
+    "state_topic": "yutampo/sensor/yutampo_hottest_hour/state",
+    "unit_of_measurement": "h",
+    "retain": True,
+    "device": DEVICE_INFO,
+    "device_class": "duration",
+    "value_template": "{{ value | float | round(2) }}",
+}
+
+HOTTEST_TEMPERATURE_PAYLOAD = {
+    "name": "Yutampo Température la Plus Chaude",
+    "unique_id": "yutampo_hottest_temperature",
+    "state_topic": "yutampo/sensor/yutampo_hottest_temperature/state",
+    "unit_of_measurement": "°C",
+    "retain": True,
+    "device": DEVICE_INFO,
+    "device_class": "temperature",
+    "value_template": "{{ value | float }}",
+}
+
+REGULATION_STATE_PAYLOAD = {
+    "name": "Yutampo État de Régulation",
+    "unique_id": "yutampo_regulation_state",
+    "state_topic": "yutampo/binary_sensor/yutampo_regulation_state/state",
+    "device_class": "running",
+    "payload_on": "true",
+    "payload_off": "false",
+    "retain": True,
+    "device": DEVICE_INFO,
+}
+
+# Constantes pour les payloads des input_number (factorisation similaire)
+AMPLITUDE_PAYLOAD = {
+    "name": "Yutampo Amplitude Thermique",
+    "unique_id": "yutampo_amplitude",
+    "state_topic": "yutampo/input_number/yutampo_amplitude/state",
+    "command_topic": "yutampo/input_number/yutampo_amplitude/set",
+    "min": 0,
+    "max": 20,
+    "step": 1,
+    "unit_of_measurement": "°C",
+    "retain": True,
+    "device": DEVICE_INFO,
+    "mode": "box",
+}
+
+HEATING_DURATION_PAYLOAD = {
+    "name": "Yutampo Heating Duration",
+    "unique_id": "yutampo_heating_duration",
+    "state_topic": "yutampo/input_number/yutampo_heating_duration/state",
+    "command_topic": "yutampo/input_number/yutampo_heating_duration/set",
+    "min": 1,
+    "max": 24,
+    "step": 0.5,
+    "unit_of_measurement": "h",
+    "retain": True,
+    "device": DEVICE_INFO,
+    "mode": "box",
+}
+
+
 class MqttHandler:
     def __init__(self, config, api_client=None):
         self.logger = logging.getLogger("Yutampo_ha_addon")
@@ -170,6 +241,17 @@ class MqttHandler:
         except Exception as e:
             self.logger.error(f"Erreur lors du traitement du message : {str(e)}")
 
+    def _publish_discovery(
+        self, entity_type, entity_id, payload, publish_state_func=None, state_args=None
+    ):
+        """Méthode générique pour publier un message MQTT Discovery."""
+        topic = f"{self.discovery_prefix}/{entity_type}/{entity_id}/config"
+        self.client.publish(topic, json.dumps(payload), retain=True)
+        self.logger.info(f"Capteur MQTT Discovery publié pour {entity_id}")
+        time.sleep(1)  # Délai pour garantir la découverte
+        if publish_state_func and state_args:
+            publish_state_func(*state_args)
+
     def publish_discovery(self, device):
         self.devices[device.id] = device
         discovery_topic = f"{self.discovery_prefix}/climate/{device.id}/config"
@@ -263,65 +345,24 @@ class MqttHandler:
         self.logger.debug(f"Disponibilité publiée pour {device_id}: {state}")
 
     def register_input_numbers(self):
+        """Enregistre les input_number via MQTT Discovery."""
         # Amplitude thermique
-        amplitude_topic = (
-            f"{self.discovery_prefix}/input_number/yutampo_amplitude/config"
+        self._publish_discovery(
+            entity_type="input_number",
+            entity_id="yutampo_amplitude",
+            payload=AMPLITUDE_PAYLOAD,
+            publish_state_func=self.publish_input_number_state,
+            state_args=("yutampo_amplitude", 8),
         )
-        amplitude_payload = {
-            "name": "Yutampo Amplitude Thermique",
-            "unique_id": "yutampo_amplitude",
-            "state_topic": "yutampo/input_number/yutampo_amplitude/state",
-            "command_topic": "yutampo/input_number/yutampo_amplitude/set",
-            "min": 0,
-            "max": 20,
-            "step": 1,
-            "unit_of_measurement": "°C",
-            "retain": True,
-            "device": {
-                "identifiers": ["yutampo_settings"],
-                "name": "Yutampo Settings",
-                "manufacturer": "Yutampo",
-                "model": "Settings",
-            },
-            # Ajout d’attribut pour compatibilité
-            "mode": "box",  # Définit l’affichage comme une boîte de saisie (par défaut dans HA)
-        }
-        self.client.publish(amplitude_topic, json.dumps(amplitude_payload), retain=True)
-        self.logger.info(
-            f"Publication MQTT Discovery pour input_number/yutampo_amplitude: {json.dumps(amplitude_payload)}"
-        )
-        time.sleep(1)  # Délai avant l’état
-        self.publish_input_number_state("yutampo_amplitude", 8)
 
         # Durée de chauffe
-        duration_topic = (
-            f"{self.discovery_prefix}/input_number/yutampo_heating_duration/config"
+        self._publish_discovery(
+            entity_type="input_number",
+            entity_id="yutampo_heating_duration",
+            payload=HEATING_DURATION_PAYLOAD,
+            publish_state_func=self.publish_input_number_state,
+            state_args=("yutampo_heating_duration", 6),
         )
-        duration_payload = {
-            "name": "Yutampo Heating Duration",
-            "unique_id": "yutampo_heating_duration",
-            "state_topic": "yutampo/input_number/yutampo_heating_duration/state",
-            "command_topic": "yutampo/input_number/yutampo_heating_duration/set",
-            "min": 1,
-            "max": 24,
-            "step": 0.5,
-            "unit_of_measurement": "h",
-            "retain": True,
-            "device": {
-                "identifiers": ["yutampo_settings"],
-                "name": "Yutampo Settings",
-                "manufacturer": "Yutampo",
-                "model": "Settings",
-            },
-            # Ajout d’attribut pour compatibilité
-            "mode": "box",  # Définit l’affichage comme une boîte de saisie
-        }
-        self.client.publish(duration_topic, json.dumps(duration_payload), retain=True)
-        self.logger.info(
-            f"Publication MQTT Discovery pour input_number/yutampo_heating_duration: {json.dumps(duration_payload)}"
-        )
-        time.sleep(1)  # Délai avant l’état
-        self.publish_input_number_state("yutampo_heating_duration", 6)
 
         self.logger.info("Entités input_number publiées via MQTT Discovery.")
 
@@ -335,105 +376,54 @@ class MqttHandler:
         self.client.disconnect()
 
     def register_sensors(self):
+        """Enregistre tous les capteurs via MQTT Discovery."""
         # Capteur pour l'heure la plus chaude
-        hottest_hour_topic = (
-            f"{self.discovery_prefix}/sensor/yutampo_hottest_hour/config"
-        )
-        hottest_hour_payload = {
-            "name": "Yutampo Heure la Plus Chaude",
-            "unique_id": "yutampo_hottest_hour",
-            "state_topic": "yutampo/sensor/yutampo_hottest_hour/state",
-            "unit_of_measurement": "h",
-            "retain": True,
-            "device": {
-                "identifiers": ["yutampo_settings"],
-                "name": "Yutampo Settings",
-                "manufacturer": "Yutampo",
-                "model": "Settings",
-            },
-            # Ajout d’attributs pour robustesse
-            "device_class": "duration",  # Pour une heure, "duration" est logique
-            "value_template": "{{ value | float | round(2) }}",  # Assure une interprétation correcte
-        }
-        self.client.publish(
-            hottest_hour_topic, json.dumps(hottest_hour_payload), retain=True
-        )
-        self.logger.info("Capteur MQTT Discovery publié pour yutampo_hottest_hour")
-        time.sleep(1)  # Délai avant l’état
-        self.publish_sensor_states(
-            (
-                self.automation_handler.weather_client.get_hottest_hour()
-                if self.automation_handler
-                else 15.0
+        self._publish_discovery(
+            entity_type="sensor",
+            entity_id="yutampo_hottest_hour",
+            payload=HOTTEST_HOUR_PAYLOAD,
+            publish_state_func=self.publish_sensor_states,
+            state_args=(
+                (
+                    self.automation_handler.weather_client.get_hottest_hour()
+                    if self.automation_handler
+                    else 15.0
+                ),
+                None,
             ),
-            None,
         )
 
         # Capteur pour la température la plus chaude
-        hottest_temp_topic = (
-            f"{self.discovery_prefix}/sensor/yutampo_hottest_temperature/config"
-        )
-        hottest_temp_payload = {
-            "name": "Yutampo Température la Plus Chaude",
-            "unique_id": "yutampo_hottest_temperature",
-            "state_topic": "yutampo/sensor/yutampo_hottest_temperature/state",
-            "unit_of_measurement": "°C",
-            "retain": True,
-            "device": {
-                "identifiers": ["yutampo_settings"],
-                "name": "Yutampo Settings",
-                "manufacturer": "Yutampo",
-                "model": "Settings",
-            },
-            # Ajout d’attributs pour robustesse
-            "device_class": "temperature",  # Classe explicite pour température
-            "value_template": "{{ value | float }}",  # Assure une interprétation correcte
-        }
-        self.client.publish(
-            hottest_temp_topic, json.dumps(hottest_temp_payload), retain=True
-        )
-        self.logger.info(
-            "Capteur MQTT Discovery publié pour yutampo_hottest_temperature"
-        )
-        time.sleep(1)  # Délai avant l’état
-        self.publish_sensor_states(
-            None,
-            (
-                self.automation_handler.weather_client.get_hottest_temperature()
-                if self.automation_handler
-                else None
+        self._publish_discovery(
+            entity_type="sensor",
+            entity_id="yutampo_hottest_temperature",
+            payload=HOTTEST_TEMPERATURE_PAYLOAD,
+            publish_state_func=self.publish_sensor_states,
+            state_args=(
+                None,
+                (
+                    self.automation_handler.weather_client.get_hottest_temperature()
+                    if self.automation_handler
+                    else None
+                ),
             ),
-            
-        regulation_state_topic = f"{self.discovery_prefix}/binary_sensor/yutampo_regulation_state/config"
-        regulation_state_payload = {
-            "name": "Yutampo État de Régulation",
-            "unique_id": "yutampo_regulation_state",
-            "state_topic": "yutampo/binary_sensor/yutampo_regulation_state/state",
-            "device_class": "running",  # Indique un état "en marche"
-            "payload_on": "true",
-            "payload_off": "false",
-            "retain": True,
-            "device": {
-                "identifiers": ["yutampo_settings"],
-                "name": "Yutampo Settings",
-                "manufacturer": "Yutampo",
-                "model": "Settings",
-            },
-        }
-        self.client.publish(regulation_state_topic, json.dumps(regulation_state_payload), retain=True)
-        self.logger.info("Capteur MQTT Discovery publié pour yutampo_regulation_state")
-        time.sleep(1)  # Délai pour garantir la découverte
-        self.publish_regulation_state(self.automation_handler.is_automatic() if self.automation_handler else True)
-        
         )
-    def publish_regulation_state(self, is_automatic):
-        self.client.publish(
-            "yutampo/binary_sensor/yutampo_regulation_state/state",
-            "true" if is_automatic else "false",
-            retain=True,
+
+        # Capteur binaire pour l'état de la régulation
+        self._publish_discovery(
+            entity_type="binary_sensor",
+            entity_id="yutampo_regulation_state",
+            payload=REGULATION_STATE_PAYLOAD,
+            publish_state_func=self.publish_regulation_state,
+            state_args=(
+                (
+                    self.automation_handler.is_automatic()
+                    if self.automation_handler
+                    else True
+                ),
+            ),
         )
-        self.logger.info(f"État de régulation publié : {is_automatic}")
-        
+
     def publish_sensor_states(self, hottest_hour, hottest_temperature):
         if hottest_hour is not None:
             self.client.publish(
