@@ -424,6 +424,15 @@ class MqttHandler:
             ),
         )
 
+    def publish_regulation_state(self, is_automatic):
+        """Publie l’état du capteur binaire yutampo_regulation_state."""
+        self.client.publish(
+            "yutampo/binary_sensor/yutampo_regulation_state/state",
+            "true" if is_automatic else "false",
+            retain=True,
+        )
+        self.logger.info(f"État de régulation publié : {is_automatic}")
+
     def publish_sensor_states(self, hottest_hour, hottest_temperature):
         if hottest_hour is not None:
             self.client.publish(

@@ -163,7 +163,6 @@ class YutampoAddon:
             )
             self.mqtt_handler.automation_handler = self.automation_handler
             self.weather_client.start()
-            self.mqtt_handler.register_sensors()
             self.automation_handler.start()
 
             # Publier les états initiaux des capteurs
