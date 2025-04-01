@@ -71,35 +71,53 @@ class AutomationHandler:
             f"Demande forcée détectée : consigne définie à {self.forced_setpoint}°C, automation de régulation désactivée."
         )
         self._apply_forced_setpoint()
+        self.mqtt_handler.publish_regulation_state(
+            self.is_automatic()
+        )  # Publier l’état
 
     def reset_forced_setpoint(self):
         self.forced_setpoint = None
         self.logger.info("Consigne forcée réinitialisée, automation normale reprise.")
-        # Forcer une exécution immédiate pour reprendre la régulation
+        self.mqtt_handler.publish_regulation_state(
+            self.is_automatic()
+        )  # Publier l’état
         self._run_automation()
 
     def _apply_forced_setpoint(self):
-        if self.physical_device.mode == "heat" and self.forced_setpoint is not None:
-            if self.api_client.set_heat_setting(
-                self.physical_device.parent_id,
-                run_stop_dhw=1,
-                setting_temp_dhw=self.forced_setpoint,
-            ):
-                self.physical_device.setting_temperature = self.forced_setpoint
-                self.mqtt_handler.publish_state(
-                    self.physical_device.id,
-                    self.physical_device.setting_temperature,
-                    self.physical_device.current_temperature,
-                    self.physical_device.mode,
-                    self.physical_device.action,
-                    self.physical_device.operation_label,
-                    source="user",
-                )
-                self.logger.info(
-                    f"Consigne forcée appliquée : {self.forced_setpoint}°C"
-                )
-            else:
-                self.logger.error("Échec de l'application de la consigne forcée")
+        if self.physical_device.mode != "heat":
+            self.logger.warning(
+                f"Mode {self.physical_device.mode} actif, consigne forcée ignorée."
+            )
+            return
+
+        if self.forced_setpoint is None:
+            self.logger.warning("Aucune consigne forcée définie, rien à appliquer.")
+            return
+
+        success = self.api_client.set_heat_setting(
+            self.physical_device.parent_id,
+            run_stop_dhw=1,
+            setting_temp_dhw=self.forced_setpoint,
+        )
+        if success:
+            self.physical_device.setting_temperature = self.forced_setpoint
+            self.mqtt_handler.publish_state(
+                self.physical_device.id,
+                self.physical_device.setting_temperature,
+                self.physical_device.current_temperature,
+                self.physical_device.mode,
+                self.physical_device.action,
+                self.physical_device.operation_label,
+                source="user",
+            )
+            self.logger.info(f"Consigne forcée appliquée : {self.forced_setpoint}°C")
+        else:
+            self.logger.error("Échec de l'application de la consigne forcée")
+            # Optionnel : réessayer ou signaler une erreur persistante
+
+    def is_automatic(self):
+        """Retourne True si la régulation automatique est active, False sinon."""
+        return self.forced_setpoint is None
 
     def _run_automation(self):
         self.logger.debug("Exécution de l'automation interne...")
@@ -120,9 +138,7 @@ class AutomationHandler:
             self.logger.warning(
                 "Température actuelle non disponible, attente de mise à jour."
             )
-            if self.forced_setpoint is not None:
-                self._apply_forced_setpoint()
-            return False
+            return False  # Ne pas appeler _apply_forced_setpoint ici
         return True
 
     def _is_forced_setpoint_active(self):
@@ -130,18 +146,28 @@ class AutomationHandler:
             return False
 
         current_temp = self.physical_device.current_temperature
+        if current_temp is None:
+            self.logger.warning(
+                "Température actuelle non disponible, consigne forcée maintenue."
+            )
+            self._apply_forced_setpoint()
+            return True
+
         if abs(current_temp - self.forced_setpoint) <= 1.0:
             self.logger.info(
                 f"Consigne forcée {self.forced_setpoint}°C atteinte (actuel : {current_temp}°C), reprise de l'automation normale."
             )
             self.forced_setpoint = None
+            self.mqtt_handler.publish_regulation_state(
+                self.is_automatic()
+            )  # Publier l’état
+            return False
         else:
             self.logger.info(
                 f"Consigne forcée {self.forced_setpoint}°C non atteinte (actuel : {current_temp}°C), automation reste désactivée."
             )
             self._apply_forced_setpoint()
             return True
-        return False
 
     def _calculate_target_temperature(self):
         if self.amplitude is None or self.amplitude <= 0:

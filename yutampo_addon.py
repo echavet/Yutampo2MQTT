@@ -176,6 +176,9 @@ class YutampoAddon:
             )
             self.mqtt_handler.publish_input_number_state("yutampo_amplitude", 8)
             self.mqtt_handler.publish_input_number_state("yutampo_heating_duration", 6)
+            self.mqtt_handler.publish_regulation_state(
+                self.automation_handler.is_automatic()
+            )
 
         self.logger.info("Addon démarré. Appuyez sur Ctrl+C pour arrêter.")
         try:

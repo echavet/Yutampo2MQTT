@@ -403,8 +403,37 @@ class MqttHandler:
                 if self.automation_handler
                 else None
             ),
+            
+        regulation_state_topic = f"{self.discovery_prefix}/binary_sensor/yutampo_regulation_state/config"
+        regulation_state_payload = {
+            "name": "Yutampo État de Régulation",
+            "unique_id": "yutampo_regulation_state",
+            "state_topic": "yutampo/binary_sensor/yutampo_regulation_state/state",
+            "device_class": "running",  # Indique un état "en marche"
+            "payload_on": "true",
+            "payload_off": "false",
+            "retain": True,
+            "device": {
+                "identifiers": ["yutampo_settings"],
+                "name": "Yutampo Settings",
+                "manufacturer": "Yutampo",
+                "model": "Settings",
+            },
+        }
+        self.client.publish(regulation_state_topic, json.dumps(regulation_state_payload), retain=True)
+        self.logger.info("Capteur MQTT Discovery publié pour yutampo_regulation_state")
+        time.sleep(1)  # Délai pour garantir la découverte
+        self.publish_regulation_state(self.automation_handler.is_automatic() if self.automation_handler else True)
+        
         )
-
+    def publish_regulation_state(self, is_automatic):
+        self.client.publish(
+            "yutampo/binary_sensor/yutampo_regulation_state/state",
+            "true" if is_automatic else "false",
+            retain=True,
+        )
+        self.logger.info(f"État de régulation publié : {is_automatic}")
+        
     def publish_sensor_states(self, hottest_hour, hottest_temperature):
         if hottest_hour is not None:
             self.client.publish(
