@@ -92,6 +92,30 @@ HEATING_DURATION_PAYLOAD = {
     "mode": "box",
 }
 
+SETPOINT_PAYLOAD = {
+    "name": "Yutampo Consigne Haute",
+    "unique_id": "yutampo_setpoint",
+    "state_topic": "yutampo/number/yutampo_setpoint/state",
+    "command_topic": "yutampo/number/yutampo_setpoint/set",
+    "min": 30,
+    "max": 55,
+    "step": 0.5,
+    "unit_of_measurement": "°C",
+    "device_class": "temperature",
+    "retain": True,
+    "device": DEVICE_INFO,
+    "mode": "box",
+}
+
+FORECAST_UPDATED_PAYLOAD = {
+    "name": "Yutampo Dernière MAJ Forecast",
+    "unique_id": "yutampo_forecast_updated",
+    "state_topic": "yutampo/sensor/yutampo_forecast_updated/state",
+    "device_class": "timestamp",
+    "retain": True,
+    "device": DEVICE_INFO,
+}
+
 
 class MqttHandler:
     def __init__(self, config, api_client=None):
@@ -149,6 +173,7 @@ class MqttHandler:
             f"yutampo/climate/+/set",
             f"yutampo/number/yutampo_amplitude/set",
             f"yutampo/number/yutampo_heating_duration/set",
+            f"yutampo/number/yutampo_setpoint/set",
         ]
         for topic in topics:
             self.client.subscribe(topic)
@@ -255,6 +280,18 @@ class MqttHandler:
                     self.publish_input_number_state(device_id, duration)
                     self.logger.info(
                         f"Changement de durée de chauffe par l'utilisateur : {duration}h"
+                    )
+                elif device_id == "yutampo_setpoint":
+                    setpoint = float(payload)
+                    if not (30 <= setpoint <= 55):
+                        self.logger.warning(
+                            f"Consigne hors plage (30-55°C) : {setpoint}"
+                        )
+                        return
+                    self.automation_handler.set_setpoint(setpoint)
+                    self.publish_input_number_state(device_id, setpoint)
+                    self.logger.info(
+                        f"Changement de consigne haute par l'utilisateur : {setpoint}°C"
                     )
         except Exception as e:
             self.logger.error(f"Erreur lors du traitement du message : {str(e)}")
@@ -382,6 +419,18 @@ class MqttHandler:
             state_args=("yutampo_heating_duration", 6),
         )
 
+        # Consigne haute
+        self._publish_discovery(
+            entity_type="number",
+            entity_id="yutampo_setpoint",
+            payload=SETPOINT_PAYLOAD,
+            publish_state_func=self.publish_input_number_state,
+            state_args=(
+                "yutampo_setpoint",
+                self.automation_handler.setpoint if self.automation_handler else 50.0,
+            ),
+        )
+
         self.logger.info("Entités number publiées via MQTT Discovery.")
 
     def publish_input_number_state(self, entity_id, value):
@@ -440,6 +489,13 @@ class MqttHandler:
                     else True
                 ),
             ),
+        )
+
+        # Capteur timestamp pour la dernière mise à jour forecast
+        self._publish_discovery(
+            entity_type="sensor",
+            entity_id="yutampo_forecast_updated",
+            payload=FORECAST_UPDATED_PAYLOAD,
         )
 
         # Capteur binaire pour l'état HC/HP (conditionnel)
@@ -514,3 +570,14 @@ class MqttHandler:
             retain=True,
         )
         self.logger.info(f"Niveau de consigne publié : {level}")
+
+    def publish_forecast_updated(self):
+        """Publie l'horodatage de la dernière mise à jour du forecast."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        self.client.publish(
+            "yutampo/sensor/yutampo_forecast_updated/state",
+            now,
+            retain=True,
+        )
+        self.logger.info(f"Horodatage forecast publié : {now}")

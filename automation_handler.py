@@ -35,11 +35,10 @@ class AutomationHandler:
         self.eco_ratio = eco_ratio
         self.forced_setpoint = None
         self.locked_hottest_hour = None
-        self.last_recalculation_date = None
+        self._in_heating_window = False
         self._last_target_level = None
 
     def start(self):
-        self._recalculate_hottest_hour()  # Recalcul initial
         self._schedule_automation()
         self.scheduler.start()
         self.logger.info(
@@ -52,25 +51,6 @@ class AutomationHandler:
             trigger=IntervalTrigger(minutes=5),
             next_run_time=datetime.now() + timedelta(seconds=5),
         )
-        self.scheduler.add_job(
-            self._recalculate_hottest_hour,
-            trigger="cron",
-            hour=0,
-            minute=0,
-            next_run_time=datetime.now() if datetime.now().hour >= 0 else None,
-        )
-
-    def _recalculate_hottest_hour(self):
-        current_date = datetime.now().date()
-        if self.weather_client and self.last_recalculation_date != current_date:
-            self.locked_hottest_hour = self.weather_client.get_hottest_hour()
-            self.last_recalculation_date = current_date
-            self.logger.info(
-                f"Heure la plus chaude verrouillée pour aujourd'hui : {self.locked_hottest_hour:.2f}h"
-            )
-        elif not self.weather_client:
-            self.locked_hottest_hour = self.mqtt_handler.default_hottest_hour
-            self.last_recalculation_date = current_date
 
     def set_forced_setpoint(self, forced_setpoint):
         self.forced_setpoint = forced_setpoint
@@ -99,6 +79,11 @@ class AutomationHandler:
         """Met à jour la durée de chauffe dynamiquement (via input_number HA)."""
         self.heating_duration = duration
         self.logger.info(f"Durée de chauffe mise à jour dynamiquement : {duration}h")
+
+    def set_setpoint(self, setpoint):
+        """Met à jour la consigne haute dynamiquement (via number HA)."""
+        self.setpoint = setpoint
+        self.logger.info(f"Consigne haute mise à jour dynamiquement : {setpoint}°C")
 
     def _apply_forced_setpoint(self):
         if self.physical_device.mode != "heat":
@@ -265,11 +250,20 @@ class AutomationHandler:
             )
 
     def _is_in_weather_window(self):
-        """Vérifie si l'heure actuelle est dans la plage de chauffe météo."""
+        """Vérifie si l'heure actuelle est dans la plage de chauffe météo.
+        Gère aussi le déverrouillage en sortie de fenêtre."""
         hottest_hour = self._get_locked_hottest_hour()
         start_hour, end_hour = self._get_heating_window(hottest_hour)
         current_hour = self._get_current_hour()
-        return self._is_within_heating_window(current_hour, start_hour, end_hour)
+        in_window = self._is_within_heating_window(current_hour, start_hour, end_hour)
+
+        if self._in_heating_window and not in_window:
+            self._in_heating_window = False
+            self.logger.info(
+                "Sortie de la fenêtre de chauffe — heure déverrouillée."
+            )
+
+        return in_window
 
     def _has_weather(self):
         """Retourne True si une entité météo est configurée et active."""
@@ -279,16 +273,31 @@ class AutomationHandler:
         )
 
     def _get_locked_hottest_hour(self):
-        """Retourne l'heure la plus chaude verrouillée ou la valeur par défaut."""
-        return (
-            self.locked_hottest_hour
-            if self.locked_hottest_hour is not None
-            else (
-                self.weather_client.get_hottest_hour()
-                if self.weather_client
-                else self.mqtt_handler.default_hottest_hour
-            )
+        """Stratégie 'Commit on entry' :
+        - Hors fenêtre : suit le dernier forecast en temps réel.
+        - Dans la fenêtre : verrouillé pour la durée de la fenêtre.
+        """
+        live_hour = (
+            self.weather_client.get_hottest_hour()
+            if self.weather_client
+            else self.mqtt_handler.default_hottest_hour
         )
+
+        if self._in_heating_window:
+            # Verrouillé — on garde la valeur figée
+            return self.locked_hottest_hour
+
+        # Hors fenêtre — suivre le forecast et vérifier si on entre dans la fenêtre
+        self.locked_hottest_hour = live_hour
+        start_hour, end_hour = self._get_heating_window(live_hour)
+        current_hour = self._get_current_hour()
+
+        if self._is_within_heating_window(current_hour, start_hour, end_hour):
+            self._in_heating_window = True
+            self.logger.info(
+                f"Entrée dans la fenêtre de chauffe — heure verrouillée à {live_hour:.2f}h"
+            )
+        return self.locked_hottest_hour
 
     def _get_heating_window(self, hottest_hour):
         start_hour = hottest_hour - (self.heating_duration / 2)

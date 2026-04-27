@@ -127,16 +127,27 @@ class WeatherClient:
             self.hottest_temperature = None
             return
 
+        now = datetime.now().astimezone()
         hottest_temp = float("-inf")
         hottest_hour = self.default_hottest_hour
+        future_count = 0
 
         for entry in forecast:
-            temp = entry.get("temperature", float("-inf"))
             dt = datetime.strptime(entry["datetime"], "%Y-%m-%dT%H:%M:%S%z")
+            if dt <= now:
+                continue  # Ignorer les heures passées
+            future_count += 1
+            temp = entry.get("temperature", float("-inf"))
             hour = dt.hour + dt.minute / 60.0
             if temp > hottest_temp:
                 hottest_temp = temp
                 hottest_hour = hour
+
+        if future_count == 0:
+            self.logger.warning(
+                "Aucune prévision future, conservation de la valeur précédente."
+            )
+            return
 
         self.hottest_hour = hottest_hour
         self.hottest_temperature = (
@@ -151,6 +162,7 @@ class WeatherClient:
             self.mqtt_handler.publish_sensor_states(
                 self.hottest_hour, self.hottest_temperature
             )
+            self.mqtt_handler.publish_forecast_updated()
 
     def get_hottest_hour(self):
         return self.hottest_hour
