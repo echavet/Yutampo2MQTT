@@ -1,0 +1,82 @@
+### Règles de Gestion et Exigences
+
+#### Objectif
+
+Optimiser la consigne du chauffe-eau Yutampo RS32 pour minimiser la consommation énergétique tout en répondant à la demande, sans allumer/éteindre l’appareil (uniquement variation de la consigne).
+
+#### Règles de Régulation
+
+1. **Consigne** :
+
+   - Varie entre `setpoint - amplitude_dynamique` (min) et `setpoint` (max).
+   - Ajustée dynamiquement dans une plage horaire centrée sur l’heure la plus chaude (`hottest_hour`).
+
+2. **Amplitude Dynamique** :
+
+   - Calcul : `amplitude_dynamique = amplitude_base + k_amplitude * |T_ext - T_max| - m_amplitude * max(threshold_low - T_eau, 0)`.
+   - Limites : `0 ≤ amplitude_dynamique ≤ amplitude_base`.
+   - Ne dépasse jamais `setpoint` en haut.
+
+3. **Durée Dynamique de la Plage Horaire** :
+
+   - Calcul : `duration_dynamique = heating_duration + k_duration * (T_max - T_moy)`.
+   - Limites : `min_duration ≤ duration_dynamique ≤ max_duration`.
+   - Centrée sur `hottest_hour`.
+
+4. **Stratégie Énergétique** :
+   - **Été** : Large plage horaire (duration_dynamique ↑), amplitude modérée.
+   - **Hiver** : Plage resserrée (duration_dynamique ↓), amplitude ajustée selon demande.
+   - **Demande élevée** (T_eau < threshold_low) : Réduction de l’amplitude pour remonter T_eau.
+
+#### Exigences
+
+1. **Configuration (options.json)** :
+
+   - Constantes : `setpoint`, `amplitude_base`, `heating_duration`, `threshold_low`, `k_amplitude`, `m_amplitude`, `k_duration`, `min_duration`, `max_duration`.
+   - Pas d’entités `input_number` via MQTT (non supportées).
+
+2. **Capteurs (sensors)** :
+
+   - `amplitude_dynamique` : Suivi de l’amplitude ajustée.
+   - `duration_dynamique` : Suivi de la durée de la plage.
+   - `T_ext` : Température extérieure actuelle.
+   - `T_max` : Température maximale quotidienne.
+   - `T_moy` : Température moyenne quotidienne.
+   - `T_eau` : Température de l’eau (déjà existante).
+
+3. **Services MQTT** :
+
+   - `yutampo/service/set_base_amplitude` : Définir amplitude_base.
+   - `yutampo/service/set_base_heating_duration` : Définir heating_duration.
+   - `yutampo/service/reset_automation` : Réinitialiser la régulation et relancer les calculs.
+
+4. **Contraintes** :
+   - Pas d’allumage/extinction du chauffe-eau (run_stop_dhw constant à 1).
+   - Publication des capteurs via MQTT Discovery comme `sensor`.
+
+---
+
+### Prompt pour un LLM
+
+```
+Développe un mécanisme de régulation pour l’add-on Yutampo2MQTT dans Home Assistant. Voici les exigences :
+
+- **Objectif** : Ajuster dynamiquement la consigne du chauffe-eau entre `setpoint - amplitude_dynamique` et `setpoint` pour minimiser la consommation énergétique, sans allumer/éteindre l’appareil.
+- **Règles** :
+  1. `amplitude_dynamique = amplitude_base + k_amplitude * |T_ext - T_max| - m_amplitude * max(threshold_low - T_eau, 0)`, limitée entre 0 et `amplitude_base`.
+  2. `duration_dynamique = heating_duration + k_duration * (T_max - T_moy)`, limitée entre `min_duration` et `max_duration`.
+  3. Plage horaire centrée sur `hottest_hour`, consigne max (`setpoint`) pendant la plage, min (`setpoint - amplitude_dynamique`) hors plage.
+  4. Été : plage large, hiver : plage étroite, demande élevée : amplitude réduite.
+- **Configuration** : Ajoute dans `options.json` : `setpoint`, `amplitude_base`, `heating_duration`, `threshold_low`, `k_amplitude`, `m_amplitude`, `k_duration`, `min_duration`, `max_duration`.
+- **Capteurs** : Crée des `sensor` MQTT pour `amplitude_dynamique`, `duration_dynamique`, `T_ext`, `T_max`, `T_moy`, `T_eau`.
+- **Services** : Implémente via MQTT : `set_forced_setpoint` (payload : valeur numérique), `reset_automation` (sans payload).
+- **Contraintes** : Pas d’`input_number`, pas de changement de `run_stop_dhw` (fixé à 1).
+
+Modifie les fichiers `yutampo_addon.py`, `automation_handler.py`, et `mqtt_handler.py` en respectant l’architecture existante. Sois concis, exhaustif, et utilise les méthodes existantes (`weather_client`, `physical_device`).
+```
+
+---
+
+### Résultat
+
+Ce mécanisme est complet, respecte vos contraintes, et permet un suivi via des capteurs dans HA. Les services MQTT offrent un contrôle manuel, et les constantes sont configurables dans l’add-on. Si besoin, je peux détailler l’implémentation !

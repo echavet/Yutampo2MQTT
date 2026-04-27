@@ -47,12 +47,44 @@ The Yutampo2MQTT add-on integrates Yutampo water heaters with Home Assistant via
 | `mqtt_user`            | MQTT username                                   | `<auto_detect>`    |
 | `mqtt_password`        | MQTT password                                   | `<auto_detect>`    |
 
+## Entités générées
+
+L'addon crée automatiquement les entités suivantes dans Home Assistant via **MQTT Discovery** :
+
+### Climate
+
+| Entity ID | Description |
+|---|---|
+| `climate.{device_id}` | Thermostat principal du chauffe-eau Yutampo RS32. Permet le contrôle du mode (`off`/`heat`) et de la consigne de température (30-60°C). |
+
+### Number (contrôles ajustables en temps réel)
+
+| Entity ID | Description | Plage | Unité |
+|---|---|---|---|
+| `number.yutampo_amplitude` | Amplitude thermique de la régulation. Définit l'écart entre la consigne max (`setpoint`) et la consigne min (`setpoint - amplitude`). | 0 – 20 | °C |
+| `number.yutampo_heating_duration` | Durée de la plage de chauffe centrée sur l'heure la plus chaude. | 1 – 24 | h |
+
+> Ces valeurs sont modifiables **en temps réel** depuis Home Assistant sans redémarrage de l'addon.
+
+### Sensors
+
+| Entity ID | Description | Unité |
+|---|---|---|
+| `sensor.yutampo_hottest_hour` | Heure la plus chaude de la journée, calculée à partir des prévisions météo (ou `default_hottest_hour` si aucune entité météo n'est configurée). | h |
+| `sensor.yutampo_hottest_temperature` | Température extérieure maximale prévue pour la journée. | °C |
+
+### Binary Sensors
+
+| Entity ID | Description | `ON` | `OFF` |
+|---|---|---|---|
+| `binary_sensor.yutampo_regulation_state` | Indique si la régulation automatique est active. Passe à `OFF` quand l'utilisateur force manuellement une consigne via le thermostat. Repasse à `ON` automatiquement quand la température de l'eau atteint la consigne forcée (±1°C). | Régulation auto active | Consigne forcée par l'utilisateur |
+
 ## Usage
 
 - **Climate Entities**: Each Yutampo device appears as a climate entity in Home Assistant, allowing mode control (`off`/`heat`) and temperature setpoint adjustments.
 - **Automation**: The add-on adjusts the temperature setpoint based on the hottest hour of the day (from weather forecasts or `default_hottest_hour`) within a configurable heating duration.
   - **Automatic Regulation**: Enabled by default with `regulation_amplitude` set to 8°C. Disabled if set to 0.
-- **Input Numbers**: Adjust `yutampo_amplitude` and `yutampo_heating_duration` via Home Assistant to fine-tune the regulation.
+- **Number Entities**: Adjust `yutampo_amplitude` and `yutampo_heating_duration` via Home Assistant to fine-tune the regulation in real time.
 
 ## Troubleshooting
 

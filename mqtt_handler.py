@@ -45,12 +45,12 @@ REGULATION_STATE_PAYLOAD = {
     "device": DEVICE_INFO,
 }
 
-# Constantes pour les payloads des input_number (factorisation similaire)
+# Constantes pour les payloads des number (MQTT Discovery)
 AMPLITUDE_PAYLOAD = {
     "name": "Yutampo Amplitude Thermique",
     "unique_id": "yutampo_amplitude",
-    "state_topic": "yutampo/input_number/yutampo_amplitude/state",
-    "command_topic": "yutampo/input_number/yutampo_amplitude/set",
+    "state_topic": "yutampo/number/yutampo_amplitude/state",
+    "command_topic": "yutampo/number/yutampo_amplitude/set",
     "min": 0,
     "max": 20,
     "step": 1,
@@ -63,8 +63,8 @@ AMPLITUDE_PAYLOAD = {
 HEATING_DURATION_PAYLOAD = {
     "name": "Yutampo Heating Duration",
     "unique_id": "yutampo_heating_duration",
-    "state_topic": "yutampo/input_number/yutampo_heating_duration/state",
-    "command_topic": "yutampo/input_number/yutampo_heating_duration/set",
+    "state_topic": "yutampo/number/yutampo_heating_duration/state",
+    "command_topic": "yutampo/number/yutampo_heating_duration/set",
     "min": 1,
     "max": 24,
     "step": 0.5,
@@ -129,8 +129,8 @@ class MqttHandler:
         topics = [
             f"yutampo/climate/+/mode/set",
             f"yutampo/climate/+/set",
-            f"yutampo/input_number/yutampo_amplitude/set",
-            f"yutampo/input_number/yutampo_heating_duration/set",
+            f"yutampo/number/yutampo_amplitude/set",
+            f"yutampo/number/yutampo_heating_duration/set",
         ]
         for topic in topics:
             self.client.subscribe(topic)
@@ -215,7 +215,7 @@ class MqttHandler:
                             f"Échec de l'application de la température {new_temp}"
                         )
 
-            elif entity_type == "input_number" and command == "set":
+            elif entity_type == "number" and command == "set":
                 if device_id == "yutampo_amplitude":
                     amplitude = float(payload)
                     if not (0 <= amplitude <= 20):
@@ -344,11 +344,11 @@ class MqttHandler:
         )
         self.logger.debug(f"Disponibilité publiée pour {device_id}: {state}")
 
-    def register_input_numbers(self):
-        """Enregistre les input_number via MQTT Discovery."""
+    def register_numbers(self):
+        """Enregistre les entités number via MQTT Discovery."""
         # Amplitude thermique
         self._publish_discovery(
-            entity_type="input_number",
+            entity_type="number",
             entity_id="yutampo_amplitude",
             payload=AMPLITUDE_PAYLOAD,
             publish_state_func=self.publish_input_number_state,
@@ -357,17 +357,17 @@ class MqttHandler:
 
         # Durée de chauffe
         self._publish_discovery(
-            entity_type="input_number",
+            entity_type="number",
             entity_id="yutampo_heating_duration",
             payload=HEATING_DURATION_PAYLOAD,
             publish_state_func=self.publish_input_number_state,
             state_args=("yutampo_heating_duration", 6),
         )
 
-        self.logger.info("Entités input_number publiées via MQTT Discovery.")
+        self.logger.info("Entités number publiées via MQTT Discovery.")
 
     def publish_input_number_state(self, entity_id, value):
-        state_topic = f"yutampo/input_number/{entity_id}/state"
+        state_topic = f"yutampo/number/{entity_id}/state"
         self.client.publish(state_topic, str(value), retain=True)
         self.logger.info(f"État publié pour {entity_id}: {value}")
 

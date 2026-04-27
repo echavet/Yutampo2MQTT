@@ -131,7 +131,7 @@ class YutampoAddon:
             device.register(self.mqtt_handler)
 
         self.scheduler.schedule_updates(self.devices, self.config["scan_interval"])
-        self.mqtt_handler.register_input_numbers()
+        self.mqtt_handler.register_numbers()
         self.mqtt_handler.register_sensors()
 
         if self.devices:

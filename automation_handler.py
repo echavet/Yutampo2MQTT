@@ -83,6 +83,16 @@ class AutomationHandler:
         )  # Publier l’état
         self._run_automation()
 
+    def set_amplitude(self, amplitude):
+        """Met à jour l'amplitude thermique dynamiquement (via input_number HA)."""
+        self.amplitude = amplitude
+        self.logger.info(f"Amplitude mise à jour dynamiquement : {amplitude}°C")
+
+    def set_heating_duration(self, duration):
+        """Met à jour la durée de chauffe dynamiquement (via input_number HA)."""
+        self.heating_duration = duration
+        self.logger.info(f"Durée de chauffe mise à jour dynamiquement : {duration}h")
+
     def _apply_forced_setpoint(self):
         if self.physical_device.mode != "heat":
             self.logger.warning(
