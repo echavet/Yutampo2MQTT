@@ -7,6 +7,7 @@ from mqtt_handler import MqttHandler
 from scheduler import Scheduler
 from weather_client import WeatherClient
 from automation_handler import AutomationHandler
+from off_peak_client import OffPeakClient
 
 logging.VERBOSE = 5
 logging.addLevelName(logging.VERBOSE, "VERBOSE")
@@ -44,6 +45,14 @@ class YutampoAddon:
         self.weather_client = WeatherClient(self.config)
         self.weather_client.mqtt_handler = self.mqtt_handler
         self.automation_handler = None
+
+        # Instanciation conditionnelle du client HC/HP
+        off_peak_entity = self.config.get("off_peak_entity")
+        if off_peak_entity:
+            self.off_peak_client = OffPeakClient(self.config)
+            self.off_peak_client.mqtt_handler = self.mqtt_handler
+        else:
+            self.off_peak_client = None
 
     def _load_config(self, config_path):
         if not os.path.exists(config_path):
@@ -92,6 +101,11 @@ class YutampoAddon:
             )
             regulation = "step"
 
+        # Paramètres HC/HP
+        off_peak_entity = config.get("off_peak_entity", "").strip()
+        regulation_priority = config.get("regulation_priority", "off_peak")
+        eco_ratio = config.get("eco_ratio", 0.5)
+
         return {
             "username": config.get("username"),
             "password": config.get("password"),
@@ -109,6 +123,9 @@ class YutampoAddon:
             "default_hottest_hour": default_hottest_hour,
             "log_level": log_level,
             "regulation": regulation,
+            "off_peak_entity": off_peak_entity if off_peak_entity else None,
+            "regulation_priority": regulation_priority,
+            "eco_ratio": eco_ratio,
         }
 
     def start(self):
@@ -160,9 +177,16 @@ class YutampoAddon:
                 amplitude=initial_amplitude,
                 heating_duration=initial_heating_duration,
                 regulation_mode=self.config["regulation"],
+                off_peak_client=self.off_peak_client,
+                regulation_priority=self.config["regulation_priority"],
+                eco_ratio=self.config["eco_ratio"],
             )
             self.mqtt_handler.automation_handler = self.automation_handler
+
+            # Démarrage des clients
             self.weather_client.start()
+            if self.off_peak_client:
+                self.off_peak_client.start()
             self.automation_handler.start()
 
             # Publier les états initiaux des capteurs
@@ -173,11 +197,15 @@ class YutampoAddon:
                 self.weather_client.get_hottest_hour(),
                 self.weather_client.get_hottest_temperature(),
             )
-            self.mqtt_handler.publish_input_number_state("yutampo_amplitude", 8)
-            self.mqtt_handler.publish_input_number_state("yutampo_heating_duration", 6)
+            self.mqtt_handler.publish_input_number_state("yutampo_amplitude", initial_amplitude)
+            self.mqtt_handler.publish_input_number_state("yutampo_heating_duration", initial_heating_duration)
             self.mqtt_handler.publish_regulation_state(
                 self.automation_handler.is_automatic()
             )
+            if self.off_peak_client:
+                self.mqtt_handler.publish_off_peak_state(
+                    self.off_peak_client.is_off_peak()
+                )
 
         self.logger.info("Addon démarré. Appuyez sur Ctrl+C pour arrêter.")
         try:
@@ -194,6 +222,8 @@ class YutampoAddon:
         self.scheduler.shutdown()
         if self.automation_handler:
             self.automation_handler.scheduler.shutdown()
+        if self.off_peak_client:
+            self.off_peak_client.shutdown()
         self.weather_client.shutdown()
         self.mqtt_handler.disconnect()
         self.logger.info("Arrêt du programme.")

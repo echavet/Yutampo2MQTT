@@ -46,6 +46,9 @@ The Yutampo2MQTT add-on integrates Yutampo water heaters with Home Assistant via
 | `mqtt_port`            | MQTT broker port                                | `<auto_detect>`    |
 | `mqtt_user`            | MQTT username                                   | `<auto_detect>`    |
 | `mqtt_password`        | MQTT password                                   | `<auto_detect>`    |
+| `off_peak_entity`      | Entity ID d'un `binary_sensor` HC/HP (`on`=HC)  | _(désactivé)_      |
+| `regulation_priority`  | Signal primaire : `off_peak` ou `weather`       | `off_peak`         |
+| `eco_ratio`            | Dosage du niveau intermédiaire (0=min, 1=max)   | `0.5`              |
 
 ## Entités générées
 
@@ -77,7 +80,8 @@ L'addon crée automatiquement les entités suivantes dans Home Assistant via **M
 
 | Entity ID | Description | `ON` | `OFF` |
 |---|---|---|---|
-| `binary_sensor.yutampo_regulation_state` | Indique si la régulation automatique est active. Passe à `OFF` quand l'utilisateur force manuellement une consigne via le thermostat. Repasse à `ON` automatiquement quand la température de l'eau atteint la consigne forcée (±1°C). | Régulation auto active | Consigne forcée par l'utilisateur |
+| `binary_sensor.yutampo_regulation_state` | Indique si la régulation automatique est active. Passe à `OFF` quand l'utilisateur force manuellement une consigne via le thermostat. | Régulation auto active | Consigne forcée par l'utilisateur |
+| `binary_sensor.yutampo_off_peak_state` | Reflète l'état du `binary_sensor` HC/HP configuré. N'apparaît que si `off_peak_entity` est renseigné. | Heures creuses (HC) | Heures pleines (HP) |
 
 ## Usage
 
@@ -85,6 +89,24 @@ L'addon crée automatiquement les entités suivantes dans Home Assistant via **M
 - **Automation**: The add-on adjusts the temperature setpoint based on the hottest hour of the day (from weather forecasts or `default_hottest_hour`) within a configurable heating duration.
   - **Automatic Regulation**: Enabled by default with `regulation_amplitude` set to 8°C. Disabled if set to 0.
 - **Number Entities**: Adjust `yutampo_amplitude` and `yutampo_heating_duration` via Home Assistant to fine-tune the regulation in real time.
+
+### Heures Creuses / Heures Pleines (HC/HP)
+
+Si `off_peak_entity` est renseigné, l'addon combine les signaux HC/HP et météo pour optimiser la consigne sur **3 niveaux** :
+
+| Niveau | Consigne | Description |
+|---|---|---|
+| 🔴 **Max** | `setpoint` | Condition primaire active |
+| 🟡 **Éco** | `setpoint - amplitude × eco_ratio` | Condition secondaire active |
+| 🔵 **Min** | `setpoint - amplitude` | Aucune condition favorable |
+
+**Mode `off_peak`** (priorité aux heures creuses) :
+- HC → Max | HP + plage météo → Éco | HP + hors plage → Min
+
+**Mode `weather`** (priorité au COP météo) :
+- Plage météo → Max | HC + hors plage → Éco | HP + hors plage → Min
+
+Le capteur `sensor.yutampo_target_level` affiche le niveau actif en temps réel (`max`, `eco` ou `min`).
 
 ## Troubleshooting
 

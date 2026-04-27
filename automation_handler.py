@@ -16,6 +16,9 @@ class AutomationHandler:
         amplitude,
         heating_duration,
         regulation_mode="step",
+        off_peak_client=None,
+        regulation_priority="off_peak",
+        eco_ratio=0.5,
     ):
         self.logger = logging.getLogger("Yutampo_ha_addon")
         self.api_client = api_client
@@ -27,9 +30,13 @@ class AutomationHandler:
         self.amplitude = amplitude
         self.heating_duration = heating_duration
         self.regulation_mode = regulation_mode
+        self.off_peak_client = off_peak_client
+        self.regulation_priority = regulation_priority
+        self.eco_ratio = eco_ratio
         self.forced_setpoint = None
         self.locked_hottest_hour = None
         self.last_recalculation_date = None
+        self._last_target_level = None
 
     def start(self):
         self._recalculate_hottest_hour()  # Recalcul initial
@@ -186,8 +193,94 @@ class AutomationHandler:
             )
             return self.setpoint
 
-        # Utiliser l’heure verrouillée ou la valeur par défaut si non encore calculée
-        hottest_hour = (
+        in_weather_window = self._is_in_weather_window()
+        is_off_peak = (
+            self.off_peak_client.is_off_peak()
+            if self.off_peak_client
+            else None
+        )
+
+        # Déterminer le niveau de consigne et le label
+        target_temp, level = self._resolve_target_level(
+            in_weather_window, is_off_peak
+        )
+
+        # Publier le niveau si changement
+        if level != self._last_target_level:
+            self._last_target_level = level
+            self.mqtt_handler.publish_target_level(level)
+
+        return target_temp
+
+    def _resolve_target_level(self, in_weather_window, is_off_peak):
+        """Résout la consigne et le label du niveau actif.
+
+        Returns:
+            tuple: (target_temperature, level_label)
+        """
+        temp_max = self.setpoint
+        temp_eco = self.setpoint - self.amplitude * self.eco_ratio
+        temp_min = self.setpoint - self.amplitude
+
+        # Cas dégradé : pas de HC configuré → comportement météo existant
+        if is_off_peak is None:
+            if in_weather_window:
+                return self._apply_weather_mode_in_window(), "max"
+            return temp_min, "min"
+
+        # Cas dégradé : pas de météo → HC/HP simple
+        if not self._has_weather():
+            if is_off_peak:
+                return temp_max, "max"
+            return temp_min, "min"
+
+        # Optimisation mixte : 3 niveaux
+        if self.regulation_priority == "off_peak":
+            if is_off_peak:
+                return temp_max, "max"
+            elif in_weather_window:
+                return temp_eco, "eco"
+            else:
+                return temp_min, "min"
+        else:  # weather
+            if in_weather_window:
+                return self._apply_weather_mode_in_window(), "max"
+            elif is_off_peak:
+                return temp_eco, "eco"
+            else:
+                return temp_min, "min"
+
+    def _apply_weather_mode_in_window(self):
+        """Applique la logique existante (step/gradual) quand on est dans la plage météo."""
+        hottest_hour = self._get_locked_hottest_hour()
+        start_hour, end_hour = self._get_heating_window(hottest_hour)
+        current_hour = self._get_current_hour()
+        self._log_heating_info(hottest_hour, start_hour, end_hour)
+
+        if self.regulation_mode == "step":
+            return self.setpoint
+        else:
+            return self._compute_temperature_during_heating(
+                current_hour, start_hour, end_hour, hottest_hour
+            )
+
+    def _is_in_weather_window(self):
+        """Vérifie si l'heure actuelle est dans la plage de chauffe météo."""
+        hottest_hour = self._get_locked_hottest_hour()
+        start_hour, end_hour = self._get_heating_window(hottest_hour)
+        current_hour = self._get_current_hour()
+        return self._is_within_heating_window(current_hour, start_hour, end_hour)
+
+    def _has_weather(self):
+        """Retourne True si une entité météo est configurée et active."""
+        return (
+            self.weather_client is not None
+            and self.weather_client.weather_entity is not None
+        )
+
+    def _get_locked_hottest_hour(self):
+        """Retourne l'heure la plus chaude verrouillée ou la valeur par défaut."""
+        return (
             self.locked_hottest_hour
             if self.locked_hottest_hour is not None
             else (
@@ -196,24 +289,6 @@ class AutomationHandler:
                 else self.mqtt_handler.default_hottest_hour
             )
         )
-        start_hour, end_hour = self._get_heating_window(hottest_hour)
-        current_hour = self._get_current_hour()
-
-        self._log_heating_info(hottest_hour, start_hour, end_hour)
-
-        if self._is_within_heating_window(current_hour, start_hour, end_hour):
-            if self.regulation_mode == "step":
-                # Mode "step" : consigne directement à setpoint
-                self.logger.debug(
-                    "Mode 'step' : consigne fixée directement à setpoint."
-                )
-                return self.setpoint
-            else:
-                # Mode "gradual" : calcul linéaire comme avant
-                return self._compute_temperature_during_heating(
-                    current_hour, start_hour, end_hour, hottest_hour
-                )
-        return self.setpoint - self.amplitude
 
     def _get_heating_window(self, hottest_hour):
         start_hour = hottest_hour - (self.heating_duration / 2)

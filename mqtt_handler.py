@@ -45,6 +45,24 @@ REGULATION_STATE_PAYLOAD = {
     "device": DEVICE_INFO,
 }
 
+OFF_PEAK_STATE_PAYLOAD = {
+    "name": "Yutampo Heures Creuses",
+    "unique_id": "yutampo_off_peak_state",
+    "state_topic": "yutampo/binary_sensor/yutampo_off_peak_state/state",
+    "payload_on": "ON",
+    "payload_off": "OFF",
+    "retain": True,
+    "device": DEVICE_INFO,
+}
+
+TARGET_LEVEL_PAYLOAD = {
+    "name": "Yutampo Niveau Consigne",
+    "unique_id": "yutampo_target_level",
+    "state_topic": "yutampo/sensor/yutampo_target_level/state",
+    "retain": True,
+    "device": DEVICE_INFO,
+}
+
 # Constantes pour les payloads des number (MQTT Discovery)
 AMPLITUDE_PAYLOAD = {
     "name": "Yutampo Amplitude Thermique",
@@ -424,6 +442,30 @@ class MqttHandler:
             ),
         )
 
+        # Capteur binaire pour l'état HC/HP (conditionnel)
+        if (
+            self.automation_handler
+            and self.automation_handler.off_peak_client
+        ):
+            self._publish_discovery(
+                entity_type="binary_sensor",
+                entity_id="yutampo_off_peak_state",
+                payload=OFF_PEAK_STATE_PAYLOAD,
+                publish_state_func=self.publish_off_peak_state,
+                state_args=(
+                    self.automation_handler.off_peak_client.is_off_peak(),
+                ),
+            )
+
+            # Capteur texte pour le niveau de consigne actif
+            self._publish_discovery(
+                entity_type="sensor",
+                entity_id="yutampo_target_level",
+                payload=TARGET_LEVEL_PAYLOAD,
+                publish_state_func=self.publish_target_level,
+                state_args=("unknown",),
+            )
+
     def publish_regulation_state(self, is_automatic):
         """Publie l’état du capteur binaire yutampo_regulation_state."""
         self.client.publish(
@@ -453,3 +495,22 @@ class MqttHandler:
         self.logger.info(
             f"États des capteurs publiés : heure={hottest_hour}, temp={hottest_temperature}"
         )
+
+    def publish_off_peak_state(self, is_off_peak):
+        """Publie l'état HC/HP sur le binary_sensor yutampo_off_peak_state."""
+        self.client.publish(
+            "yutampo/binary_sensor/yutampo_off_peak_state/state",
+            "ON" if is_off_peak else "OFF",
+            retain=True,
+        )
+        label = "HC (off-peak)" if is_off_peak else "HP (peak)"
+        self.logger.info(f"État HC/HP publié : {label}")
+
+    def publish_target_level(self, level):
+        """Publie le niveau de consigne actif (max/eco/min)."""
+        self.client.publish(
+            "yutampo/sensor/yutampo_target_level/state",
+            str(level),
+            retain=True,
+        )
+        self.logger.info(f"Niveau de consigne publié : {level}")
