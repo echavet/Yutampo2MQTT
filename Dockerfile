@@ -1,4 +1,4 @@
-FROM ghcr.io/home-assistant/base:stable
+FROM ghcr.io/home-assistant/base:latest
 
 ENV LANG C.UTF-8
 
