@@ -13,7 +13,10 @@ class OffPeakClient:
 
     - is_off_peak() retourne True en heures creuses (binary_sensor = on).
     - Fallback conservateur : False (HP) si déconnecté ou erreur.
+    - Reconnexion automatique avec backoff exponentiel.
     """
+
+    MAX_RECONNECT_DELAY = 300  # 5 minutes max
 
     def __init__(self, config):
         self.logger = logging.getLogger("Yutampo_ha_addon")
@@ -26,6 +29,8 @@ class OffPeakClient:
         self.connected = False
         self._is_off_peak = False
         self._state_received = False
+        self._shutdown_requested = False
+        self._reconnect_delay = 5
         self.mqtt_handler = None
 
     def start(self):
@@ -65,6 +70,8 @@ class OffPeakClient:
 
     def _on_open(self, ws):
         self.connected = True
+        self.message_id = 1
+        self._reconnect_delay = 5  # Reset backoff
         self.logger.info("OffPeakClient : connexion WebSocket ouverte.")
 
     def _on_message(self, ws, message):
@@ -108,6 +115,7 @@ class OffPeakClient:
         self.connected = False
         self._is_off_peak = False  # Fallback conservateur → HP
         self.logger.error(f"OffPeakClient : erreur WebSocket : {str(error)}")
+        self._reconnect()
 
     def _on_close(self, ws, close_status_code, close_msg):
         self.connected = False
@@ -115,6 +123,26 @@ class OffPeakClient:
         self.logger.info(
             f"OffPeakClient : WebSocket fermée : {close_status_code} - {close_msg}"
         )
+        self._reconnect()
+
+    def _reconnect(self):
+        """Reconnexion avec backoff exponentiel (5s, 10s, 20s... max 300s)."""
+        if self._shutdown_requested:
+            return
+        delay = self._reconnect_delay
+        self._reconnect_delay = min(delay * 2, self.MAX_RECONNECT_DELAY)
+        self.logger.info(
+            f"OffPeakClient : reconnexion dans {delay}s..."
+        )
+
+        def _do_reconnect():
+            time.sleep(delay)
+            if not self._shutdown_requested:
+                self._connect_websocket()
+
+        t = threading.Thread(target=_do_reconnect)
+        t.daemon = True
+        t.start()
 
     def _request_initial_state(self):
         """Récupère l'état initial via get_states."""
@@ -152,6 +180,7 @@ class OffPeakClient:
         return self._is_off_peak
 
     def shutdown(self):
+        self._shutdown_requested = True
         if self.ws:
             self.ws.close()
         self.logger.info("OffPeakClient arrêté.")
