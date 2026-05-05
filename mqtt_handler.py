@@ -70,7 +70,7 @@ AMPLITUDE_PAYLOAD = {
     "state_topic": "yutampo/number/yutampo_amplitude/state",
     "command_topic": "yutampo/number/yutampo_amplitude/set",
     "min": 0,
-    "max": 20,
+    "max": 30,
     "step": 1,
     "unit_of_measurement": "°C",
     "retain": True,
@@ -401,13 +401,17 @@ class MqttHandler:
 
     def register_numbers(self):
         """Enregistre les entités number via MQTT Discovery."""
+        # Valeurs réelles depuis l'automation handler (ou défauts)
+        amplitude = self.automation_handler.amplitude if self.automation_handler else 8
+        duration = self.automation_handler.heating_duration if self.automation_handler else 6
+
         # Amplitude thermique
         self._publish_discovery(
             entity_type="number",
             entity_id="yutampo_amplitude",
             payload=AMPLITUDE_PAYLOAD,
             publish_state_func=self.publish_input_number_state,
-            state_args=("yutampo_amplitude", 8),
+            state_args=("yutampo_amplitude", amplitude),
         )
 
         # Durée de chauffe
@@ -416,7 +420,7 @@ class MqttHandler:
             entity_id="yutampo_heating_duration",
             payload=HEATING_DURATION_PAYLOAD,
             publish_state_func=self.publish_input_number_state,
-            state_args=("yutampo_heating_duration", 6),
+            state_args=("yutampo_heating_duration", duration),
         )
 
         # Consigne haute

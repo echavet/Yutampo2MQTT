@@ -195,6 +195,8 @@ class AutomationHandler:
             self._last_target_level = level
             self.mqtt_handler.publish_target_level(level)
 
+        # Clamper aux limites hardware de l'appareil (30-55°C)
+        target_temp = max(30.0, min(55.0, target_temp))
         return target_temp
 
     def _resolve_target_level(self, in_weather_window, is_off_peak):
