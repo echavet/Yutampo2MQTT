@@ -1,5 +1,5 @@
 name: "Yutampo2MQTT HA Addon"
-version: "2025.5.2"
+version: "2026.5.2"
 slug: "yutampo2mqtt"
 description: "Add-on pour intégrer le chauffe-eau Yutampo via CSNet avec automation interne"
 services:
