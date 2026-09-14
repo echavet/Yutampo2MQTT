@@ -70,6 +70,11 @@ class ApiClient:
 
     def _reset_session_and_authenticate(self):
         self.logger.debug("Renouvellement de la session et réauthentification...")
+        if self.session:
+            try:
+                self.session.close()
+            except Exception as e:
+                self.logger.debug(f"Erreur lors de la fermeture de la session : {str(e)}")
         self.session = requests.Session()
         return self.authenticate()
 
