@@ -31,6 +31,7 @@ class OffPeakClient:
         self._state_received = False
         self._shutdown_requested = False
         self._reconnect_delay = 5
+        self._reconnecting = False
         self.mqtt_handler = None
 
     def start(self):
@@ -47,6 +48,15 @@ class OffPeakClient:
 
     def _connect_websocket(self):
         try:
+            if self.ws:
+                try:
+                    self.ws.close()
+                except Exception as e:
+                    self.logger.debug(f"OffPeakClient : erreur fermeture ancien WS : {str(e)}")
+                self.ws = None
+            if self.ws_thread and self.ws_thread.is_alive():
+                self.ws_thread.join(timeout=2.0)
+                self.ws_thread = None
             self.ws = websocket.WebSocketApp(
                 self.ws_url,
                 on_open=self._on_open,
@@ -67,6 +77,8 @@ class OffPeakClient:
             self.logger.error(
                 f"OffPeakClient : erreur connexion WebSocket : {str(e)}"
             )
+        finally:
+            self._reconnecting = False
 
     def _on_open(self, ws):
         self.connected = True
@@ -127,8 +139,9 @@ class OffPeakClient:
 
     def _reconnect(self):
         """Reconnexion avec backoff exponentiel (5s, 10s, 20s... max 300s)."""
-        if self._shutdown_requested:
+        if self._shutdown_requested or self._reconnecting:
             return
+        self._reconnecting = True
         delay = self._reconnect_delay
         self._reconnect_delay = min(delay * 2, self.MAX_RECONNECT_DELAY)
         self.logger.info(

@@ -51,6 +51,15 @@ class WeatherClient:
 
     def _connect_websocket(self):
         try:
+            if self.ws:
+                try:
+                    self.ws.close()
+                except Exception as e:
+                    self.logger.debug(f"Erreur fermeture ancien WebSocket : {str(e)}")
+                self.ws = None
+            if self.ws_thread and self.ws_thread.is_alive():
+                self.ws_thread.join(timeout=2.0)
+                self.ws_thread = None
             self.ws = websocket.WebSocketApp(
                 self.ws_url,
                 on_open=self._on_open,
