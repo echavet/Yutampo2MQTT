@@ -148,8 +148,8 @@ class YutampoAddon:
             device.register(self.mqtt_handler)
 
         self.scheduler.schedule_updates(self.devices, self.config["scan_interval"])
-        self.mqtt_handler.register_numbers()
-        self.mqtt_handler.register_sensors()
+        # register_numbers() et register_sensors() déplacés après création
+        # de automation_handler pour garantir l'accès aux valeurs réelles
 
         if self.devices:
             # Initialisation de l'amplitude : priorité aux options, sinon valeur par défaut
@@ -188,6 +188,11 @@ class YutampoAddon:
             if self.off_peak_client:
                 self.off_peak_client.start()
             self.automation_handler.start()
+
+            # Enregistrer les entités MQTT APRÈS création de automation_handler
+            # pour garantir l'accès aux valeurs réelles et la discovery de off_peak_state
+            self.mqtt_handler.register_numbers()
+            self.mqtt_handler.register_sensors()
 
             # Publier les états initiaux des capteurs
             self.logger.info(
