@@ -325,13 +325,18 @@ class AutomationHandler:
         return self.locked_hottest_hour
 
     def _is_window_entirely_past(self, current_hour, start_hour, end_hour):
-        """Vérifie si la fenêtre de chauffe est entièrement dans le passé."""
-        # Cas normal: start < end (pas de chevauchement sur minuit)
-        if start_hour <= end_hour:
-            return end_hour < current_hour
-        # Cas avec chevauchement sur minuit: ex 23h-01h
-        # La fenêtre est passée si on est après end_hour ET avant start_hour
-        return end_hour < current_hour < start_hour
+        """Vérifie si la fenêtre de chauffe est entièrement dans le passé.
+
+        Note: Pour les fenêtres qui chevauchent minuit (start > end), on retourne
+        toujours False car sans date complète, on ne peut pas distinguer une
+        fenêtre passée d'une fenêtre à venir le même jour.
+        """
+        # Cas avec chevauchement sur minuit (ex: 23h-01h): ne pas considérer comme passée
+        # car sans date, on ne peut pas savoir si c'est hier soir ou ce soir
+        if start_hour > end_hour:
+            return False
+        # Cas normal: start <= end (pas de chevauchement)
+        return end_hour < current_hour
 
     def _get_heating_window(self, hottest_hour):
         start_hour = hottest_hour - (self.heating_duration / 2)
