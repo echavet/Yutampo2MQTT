@@ -278,6 +278,7 @@ class AutomationHandler:
         """Stratégie 'Commit on entry' :
         - Hors fenêtre : suit le dernier forecast en temps réel.
         - Dans la fenêtre : verrouillé pour la durée de la fenêtre.
+        - Protection: ignore les forecasts qui placent la fenêtre entièrement dans le passé.
         """
         live_hour = (
             self.weather_client.get_hottest_hour()
@@ -289,17 +290,48 @@ class AutomationHandler:
             # Verrouillé — on garde la valeur figée
             return self.locked_hottest_hour
 
-        # Hors fenêtre — suivre le forecast et vérifier si on entre dans la fenêtre
-        self.locked_hottest_hour = live_hour
-        start_hour, end_hour = self._get_heating_window(live_hour)
+        # Hors fenêtre — vérifier si le forecast est utilisable
         current_hour = self._get_current_hour()
+        start_hour, end_hour = self._get_heating_window(live_hour)
+
+        # Protection contre le "window chasing": si la fenêtre du forecast est
+        # entièrement passée, conserver la valeur précédente pour éviter de
+        # "courir après" une fenêtre impossible à atteindre.
+        if self._is_window_entirely_past(current_hour, start_hour, end_hour):
+            if self.locked_hottest_hour is not None:
+                # Vérifier si la fenêtre précédente est encore utilisable
+                prev_start, prev_end = self._get_heating_window(self.locked_hottest_hour)
+                if not self._is_window_entirely_past(current_hour, prev_start, prev_end):
+                    self.logger.debug(
+                        f"Forecast donne fenêtre passée [{start_hour:.2f}h-{end_hour:.2f}h], "
+                        f"conservation de locked_hottest_hour={self.locked_hottest_hour:.2f}h"
+                    )
+                    start_hour, end_hour = prev_start, prev_end
+                else:
+                    # Les deux fenêtres sont passées, accepter le nouveau forecast
+                    self.locked_hottest_hour = live_hour
+            else:
+                # Pas de valeur précédente, accepter le nouveau forecast
+                self.locked_hottest_hour = live_hour
+        else:
+            # Fenêtre utilisable, mettre à jour normalement
+            self.locked_hottest_hour = live_hour
 
         if self._is_within_heating_window(current_hour, start_hour, end_hour):
             self._in_heating_window = True
             self.logger.info(
-                f"Entrée dans la fenêtre de chauffe — heure verrouillée à {live_hour:.2f}h"
+                f"Entrée dans la fenêtre de chauffe — heure verrouillée à {self.locked_hottest_hour:.2f}h"
             )
         return self.locked_hottest_hour
+
+    def _is_window_entirely_past(self, current_hour, start_hour, end_hour):
+        """Vérifie si la fenêtre de chauffe est entièrement dans le passé."""
+        # Cas normal: start < end (pas de chevauchement sur minuit)
+        if start_hour <= end_hour:
+            return end_hour < current_hour
+        # Cas avec chevauchement sur minuit: ex 23h-01h
+        # La fenêtre est passée si on est après end_hour ET avant start_hour
+        return end_hour < current_hour < start_hour
 
     def _get_heating_window(self, hottest_hour):
         start_hour = hottest_hour - (self.heating_duration / 2)
