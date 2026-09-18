@@ -85,45 +85,29 @@ class TestIsWindowEntirelyPast:
         assert handler._is_window_entirely_past(current, start, end) is expected
 
     @pytest.mark.parametrize(
-        "current, start, end, expected",
+        "current, start, end",
         [
-            # Wrap 23h–01h : pendant la fenêtre → pas passé
-            (23.0, 23.0, 1.0, False),
-            (23.5, 23.0, 1.0, False),
-            (0.0, 23.0, 1.0, False),
-            (0.99, 23.0, 1.0, False),
-            # Juste après la fin → passé
-            (1.01, 23.0, 1.0, True),
-            (2.0, 23.0, 1.0, True),
-            (12.0, 23.0, 1.0, True),
+            # Pendant la fenêtre
+            (23.0, 23.0, 1.0),
+            (23.5, 23.0, 1.0),
+            (0.0, 23.0, 1.0),
+            (0.99, 23.0, 1.0),
+            # Après la fin, avant le prochain début, et pile avant le start
+            (1.01, 23.0, 1.0),
+            (2.0, 23.0, 1.0),
+            (12.0, 23.0, 1.0),
+            (22.0, 23.0, 1.0),
+            # Wrap 22h–00h
+            (21.0, 22.0, 0.0),
+            (23.0, 22.0, 0.0),
+            (0.5, 22.0, 0.0),
         ],
     )
-    def test_wrapping_window_in_and_after(self, current, start, end, expected):
+    def test_wrapping_window_is_never_entirely_past(self, current, start, end):
+        """Sans date calendaire, un wrap minuit n'est jamais marqué « passé »
+        (on ne peut pas distinguer hier soir de ce soir)."""
         handler = make_handler()
-        assert handler._is_window_entirely_past(current, start, end) is expected
-
-    def test_wrapping_gap_before_start_known_limitation(self):
-        """À 22h, la fenêtre 23h–01h n'a pas encore commencé.
-
-        L'implémentation actuelle traite tout le « gap » wrap
-        (`end < current < start`) comme passé, y compris la période
-        *avant* le début. C'est le cas limite signalé en revue de PR #57.
-
-        Impact pratique faible (hottest_hour est typiquement diurne).
-        """
-        handler = make_handler()
-        assert handler._is_window_entirely_past(22.0, 23.0, 1.0) is True
-
-    @pytest.mark.xfail(
-        reason=(
-            "Limitation wrap minuit : à 22h une fenêtre 23h-01h est encore "
-            "atteignable et ne devrait pas être considérée comme passée."
-        ),
-        strict=False,
-    )
-    def test_wrapping_window_not_past_when_start_still_ahead(self):
-        handler = make_handler()
-        assert handler._is_window_entirely_past(22.0, 23.0, 1.0) is False
+        assert handler._is_window_entirely_past(current, start, end) is False
 
     def test_entirely_past_implies_not_within(self):
         """Invariant : une fenêtre entièrement passée n'est jamais 'within'."""

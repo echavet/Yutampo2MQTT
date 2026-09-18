@@ -16,14 +16,17 @@ class TestInitOrder:
         source = (REPO_ROOT / "yutampo_addon.py").read_text(encoding="utf-8")
         start_src = source.split("def start(self):", 1)[1]
         create_at = start_src.find("self.automation_handler = AutomationHandler")
-        register_at = start_src.find("self.mqtt_handler.register_sensors()")
+        register_sensors_at = start_src.find("self.mqtt_handler.register_sensors()")
+        register_numbers_at = start_src.find("self.mqtt_handler.register_numbers()")
         off_peak_start_at = start_src.find("self.off_peak_client.start()")
 
         assert create_at != -1
-        assert register_at != -1
+        assert register_sensors_at != -1
+        assert register_numbers_at != -1
         assert off_peak_start_at != -1
-        assert create_at < register_at
-        assert off_peak_start_at < register_at
+        assert create_at < register_sensors_at
+        assert create_at < register_numbers_at
+        assert off_peak_start_at < register_sensors_at
 
 
 class TestRegisterSensorsOffPeakDiscovery:
