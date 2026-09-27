@@ -64,6 +64,9 @@ TARGET_LEVEL_PAYLOAD = {
 }
 
 # Constantes pour les payloads des number (MQTT Discovery)
+# Note: retain=False for number entities - state retention is handled by
+# publish_input_number_state on state_topic, NOT on command_topic.
+# Using retain=True here would cause HA to republish stale commands.
 AMPLITUDE_PAYLOAD = {
     "name": "Yutampo Amplitude Thermique",
     "unique_id": "yutampo_amplitude",
@@ -73,7 +76,7 @@ AMPLITUDE_PAYLOAD = {
     "max": 30,
     "step": 1,
     "unit_of_measurement": "°C",
-    "retain": True,
+    "retain": False,
     "device": DEVICE_INFO,
     "mode": "box",
 }
@@ -87,7 +90,7 @@ HEATING_DURATION_PAYLOAD = {
     "max": 24,
     "step": 0.5,
     "unit_of_measurement": "h",
-    "retain": True,
+    "retain": False,
     "device": DEVICE_INFO,
     "mode": "box",
 }
@@ -102,7 +105,7 @@ SETPOINT_PAYLOAD = {
     "step": 0.5,
     "unit_of_measurement": "°C",
     "device_class": "temperature",
-    "retain": True,
+    "retain": False,
     "device": DEVICE_INFO,
     "mode": "box",
 }
@@ -162,6 +165,9 @@ class MqttHandler:
             for device_id in self.devices:
                 self.publish_availability(device_id, "online")
 
+            # Clear retained command topics BEFORE subscribing to prevent stale
+            # retained messages from being processed on reconnect
+            self.clear_retained_command_topics()
             self.subscribe_topics()
         else:
             self.logger.error(
@@ -181,9 +187,6 @@ class MqttHandler:
         self.logger.debug("Souscriptions aux topics MQTT effectuées.")
 
     def _on_message(self, client, userdata, msg):
-        self.logger.info(
-            f"Commande utilisateur reçue sur le topic {msg.topic}: {msg.payload.decode()}"
-        )
         try:
             topic_parts = msg.topic.split("/")
             entity_type = topic_parts[1]
@@ -192,6 +195,9 @@ class MqttHandler:
             payload = msg.payload.decode()
 
             if entity_type == "climate":
+                self.logger.info(
+                    f"Commande utilisateur reçue sur le topic {msg.topic}: {payload}"
+                )
                 if device_id not in self.devices:
                     self.logger.error(f"Device {device_id} inconnu.")
                     return
@@ -260,11 +266,22 @@ class MqttHandler:
                         )
 
             elif entity_type == "number" and command == "set":
+                # Filter out retained messages and bootstrap phase BEFORE logging
+                # to avoid misleading "Commande utilisateur" logs
                 if not self._bootstrap_complete:
                     self.logger.debug(
                         f"Ignoring number command during bootstrap: {msg.topic} = {payload}"
                     )
                     return
+                if msg.retain:
+                    self.logger.debug(
+                        f"Ignoring retained number command: {msg.topic} = {payload}"
+                    )
+                    return
+
+                self.logger.info(
+                    f"Commande utilisateur reçue sur le topic {msg.topic}: {payload}"
+                )
                 if device_id == "yutampo_amplitude":
                     amplitude = float(payload)
                     if not (0 <= amplitude <= 20):
@@ -595,8 +612,13 @@ class MqttHandler:
     def clear_retained_command_topics(self):
         """Clear retained messages on command topics to prevent stale values on restart.
 
-        This publishes empty retained messages to the command topics, which clears
-        any previously retained messages that would otherwise be replayed on subscribe.
+        This publishes empty retained messages (with QoS 1 for durability) to the
+        command topics, which clears any previously retained messages that would
+        otherwise be replayed on subscribe.
+
+        Called both:
+        - On every connect/reconnect (before subscribe_topics)
+        - At bootstrap completion (belt-and-suspenders)
         """
         command_topics = [
             "yutampo/number/yutampo_amplitude/set",
@@ -604,7 +626,7 @@ class MqttHandler:
             "yutampo/number/yutampo_setpoint/set",
         ]
         for topic in command_topics:
-            self.client.publish(topic, "", retain=True)
+            self.client.publish(topic, "", qos=1, retain=True)
         self.logger.debug("Cleared retained messages on number command topics.")
 
     def complete_bootstrap(self):
