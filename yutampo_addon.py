@@ -212,6 +212,10 @@ class YutampoAddon:
                     self.off_peak_client.is_off_peak()
                 )
 
+            # Mark bootstrap complete: now safe to process number commands from MQTT
+            # This prevents stale retained messages from overwriting config values
+            self.mqtt_handler.complete_bootstrap()
+
         self.logger.info("Addon démarré. Appuyez sur Ctrl+C pour arrêter.")
         try:
             while True:
