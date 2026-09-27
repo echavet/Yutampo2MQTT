@@ -136,6 +136,7 @@ class MqttHandler:
         self.api_client = api_client
         self.devices = {}
         self.automation_handler = None
+        self._bootstrap_complete = False
         self.client.username_pw_set(self.mqtt_user, self.mqtt_password)
 
     def connect(self):
@@ -259,6 +260,11 @@ class MqttHandler:
                         )
 
             elif entity_type == "number" and command == "set":
+                if not self._bootstrap_complete:
+                    self.logger.debug(
+                        f"Ignoring number command during bootstrap: {msg.topic} = {payload}"
+                    )
+                    return
                 if device_id == "yutampo_amplitude":
                     amplitude = float(payload)
                     if not (0 <= amplitude <= 20):
@@ -585,3 +591,35 @@ class MqttHandler:
             retain=True,
         )
         self.logger.info(f"Horodatage forecast publié : {now}")
+
+    def clear_retained_command_topics(self):
+        """Clear retained messages on command topics to prevent stale values on restart.
+
+        This publishes empty retained messages to the command topics, which clears
+        any previously retained messages that would otherwise be replayed on subscribe.
+        """
+        command_topics = [
+            "yutampo/number/yutampo_amplitude/set",
+            "yutampo/number/yutampo_heating_duration/set",
+            "yutampo/number/yutampo_setpoint/set",
+        ]
+        for topic in command_topics:
+            self.client.publish(topic, "", retain=True)
+        self.logger.debug("Cleared retained messages on number command topics.")
+
+    def complete_bootstrap(self):
+        """Mark bootstrap as complete, enabling processing of number commands.
+
+        This should be called after:
+        1. automation_handler is set
+        2. register_numbers() has published initial states
+        3. Initial state values have been published
+
+        After this point, MQTT messages on number command topics will be processed
+        as legitimate user commands from Home Assistant.
+        """
+        self.clear_retained_command_topics()
+        self._bootstrap_complete = True
+        self.logger.info(
+            "Bootstrap complete: number command processing enabled."
+        )
