@@ -55,6 +55,17 @@ OFF_PEAK_STATE_PAYLOAD = {
     "device": DEVICE_INFO,
 }
 
+OFF_PEAK_CONNECTED_PAYLOAD = {
+    "name": "Yutampo OffPeak Connection",
+    "unique_id": "yutampo_off_peak_connected",
+    "state_topic": "yutampo/binary_sensor/yutampo_off_peak_connected/state",
+    "device_class": "connectivity",
+    "payload_on": "ON",
+    "payload_off": "OFF",
+    "retain": True,
+    "device": DEVICE_INFO,
+}
+
 TARGET_LEVEL_PAYLOAD = {
     "name": "Yutampo Niveau Consigne",
     "unique_id": "yutampo_target_level",
@@ -244,12 +255,14 @@ class MqttHandler:
                     old_temp = device.setting_temperature
                     if self.automation_handler:
                         self.automation_handler.set_forced_setpoint(new_temp)
-                    if self.api_client.set_heat_setting(
+                    applied_temp = self.api_client.set_heat_setting(
                         device.parent_id, setting_temp_dhw=new_temp
-                    ):
-                        device.setting_temperature = new_temp
+                    )
+                    if applied_temp:
+                        # Use the rounded temperature actually applied
+                        device.setting_temperature = applied_temp
                         self.logger.info(
-                            f"Changement de consigne par l'utilisateur : {old_temp}°C -> {new_temp}°C"
+                            f"Changement de consigne par l'utilisateur : {old_temp}°C -> {applied_temp}°C"
                         )
                         self.publish_state(
                             device.id,
@@ -540,6 +553,17 @@ class MqttHandler:
                 ),
             )
 
+            # Capteur binaire pour l'état de connexion du client OffPeak
+            self._publish_discovery(
+                entity_type="binary_sensor",
+                entity_id="yutampo_off_peak_connected",
+                payload=OFF_PEAK_CONNECTED_PAYLOAD,
+                publish_state_func=self.publish_off_peak_connection_state,
+                state_args=(
+                    self.automation_handler.off_peak_client.is_connected(),
+                ),
+            )
+
             # Capteur texte pour le niveau de consigne actif
             self._publish_discovery(
                 entity_type="sensor",
@@ -588,6 +612,16 @@ class MqttHandler:
         )
         label = "HC (off-peak)" if is_off_peak else "HP (peak)"
         self.logger.info(f"État HC/HP publié : {label}")
+
+    def publish_off_peak_connection_state(self, is_connected):
+        """Publie l'état de connexion du client OffPeak sur MQTT."""
+        self.client.publish(
+            "yutampo/binary_sensor/yutampo_off_peak_connected/state",
+            "ON" if is_connected else "OFF",
+            retain=True,
+        )
+        status = "connecté" if is_connected else "déconnecté"
+        self.logger.info(f"État connexion OffPeak publié : {status}")
 
     def publish_target_level(self, level):
         """Publie le niveau de consigne actif (max/eco/min)."""

@@ -151,9 +151,32 @@ class ApiClient:
         return None
 
     def set_heat_setting(self, indoor_id, run_stop_dhw=None, setting_temp_dhw=None):
-        self.logger.info(
-            f"Modification de l'état/temp pour indoorId={indoor_id}, runStopDHW={run_stop_dhw}, settingTempDHW={setting_temp_dhw}"
-        )
+        """Envoie une commande de réglage au chauffe-eau.
+
+        Args:
+            indoor_id: ID de l'appareil
+            run_stop_dhw: 1 pour démarrer, 0 pour arrêter (optionnel)
+            setting_temp_dhw: Température de consigne (optionnel, sera arrondie)
+
+        Returns:
+            - Si setting_temp_dhw fourni et succès : la température arrondie (int)
+            - Si succès sans température : True
+            - En cas d'échec : False
+
+        Note: La température est arrondie à l'entier le plus proche avant envoi.
+              Utilisez la valeur de retour pour mettre à jour l'état local.
+        """
+        rounded_temp = None
+        if setting_temp_dhw is not None:
+            rounded_temp = round(setting_temp_dhw)
+            self.logger.info(
+                f"Modification de l'état/temp pour indoorId={indoor_id}, "
+                f"runStopDHW={run_stop_dhw}, settingTempDHW={setting_temp_dhw} → {rounded_temp}"
+            )
+        else:
+            self.logger.info(
+                f"Modification de l'état pour indoorId={indoor_id}, runStopDHW={run_stop_dhw}"
+            )
 
         if not self._fetch_csrf_token():
             self.logger.error("Échec récupération token CSRF avant POST.")
@@ -163,8 +186,8 @@ class ApiClient:
             "indoorId": str(indoor_id),
             "_csrf": self.csrf_token,
         }
-        if setting_temp_dhw is not None:
-            payload["settingTempDHW"] = str(int(setting_temp_dhw))
+        if rounded_temp is not None:
+            payload["settingTempDHW"] = str(rounded_temp)
         if run_stop_dhw is not None:
             payload["runStopDHW"] = str(run_stop_dhw)
 
@@ -187,8 +210,11 @@ class ApiClient:
                 try:
                     resp_json = response.json()
                     if resp_json.get("status") == "success":
-                        self.logger.info("Commande exécutée avec succès.")
-                        return True
+                        self.logger.info(
+                            f"Commande exécutée avec succès"
+                            + (f" (temp appliquée: {rounded_temp}°C)" if rounded_temp else "")
+                        )
+                        return rounded_temp if rounded_temp is not None else True
                     else:
                         self.logger.error(f"Réponse API non réussie : {resp_json}")
                         return False
