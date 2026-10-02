@@ -197,6 +197,30 @@ class MqttHandler:
             self.client.subscribe(topic)
         self.logger.debug("Souscriptions aux topics MQTT effectuées.")
 
+    def _parse_numeric_payload(self, payload, topic):
+        """Parse a numeric payload string, handling empty and invalid values gracefully.
+
+        Args:
+            payload: The payload string to parse
+            topic: The MQTT topic (for logging context)
+
+        Returns:
+            The parsed float value, or None if the payload should be ignored
+        """
+        if not payload or payload.isspace():
+            self.logger.debug(
+                f"Ignoring empty payload on topic {topic}"
+            )
+            return None
+
+        try:
+            return float(payload)
+        except ValueError:
+            self.logger.warning(
+                f"Invalid numeric payload '{payload}' on topic {topic}, ignoring"
+            )
+            return None
+
     def _on_message(self, client, userdata, msg):
         try:
             topic_parts = msg.topic.split("/")
@@ -246,7 +270,9 @@ class MqttHandler:
                                 f"Échec de l'application du mode {new_mode}"
                             )
                 elif command == "set":
-                    new_temp = float(payload)
+                    new_temp = self._parse_numeric_payload(payload, msg.topic)
+                    if new_temp is None:
+                        return
                     if not (30 <= new_temp <= 60):
                         self.logger.warning(
                             f"Température hors plage (30-60°C) : {new_temp}"
@@ -292,11 +318,15 @@ class MqttHandler:
                     )
                     return
 
+                value = self._parse_numeric_payload(payload, msg.topic)
+                if value is None:
+                    return
+
                 self.logger.info(
                     f"Commande utilisateur reçue sur le topic {msg.topic}: {payload}"
                 )
                 if device_id == "yutampo_amplitude":
-                    amplitude = float(payload)
+                    amplitude = value
                     if not (0 <= amplitude <= 20):
                         self.logger.warning(
                             f"Amplitude hors plage (0-20°C) : {amplitude}"
@@ -308,7 +338,7 @@ class MqttHandler:
                         f"Changement d'amplitude par l'utilisateur : {amplitude}°C"
                     )
                 elif device_id == "yutampo_heating_duration":
-                    duration = float(payload)
+                    duration = value
                     if not (1 <= duration <= 24):
                         self.logger.warning(f"Durée hors plage (1-24h) : {duration}")
                         return
@@ -318,7 +348,7 @@ class MqttHandler:
                         f"Changement de durée de chauffe par l'utilisateur : {duration}h"
                     )
                 elif device_id == "yutampo_setpoint":
-                    setpoint = float(payload)
+                    setpoint = value
                     if not (30 <= setpoint <= 55):
                         self.logger.warning(
                             f"Consigne hors plage (30-55°C) : {setpoint}"

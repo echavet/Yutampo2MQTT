@@ -8,6 +8,18 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 (Calendar Versioning) au format `YYYY.M.D` (année.mois.jour, sans padding de zéros).
 Les versions précédentes utilisaient le versionnage sémantique (3.x.x).
 
+## [Unreleased]
+
+### Corrigé
+
+- **Erreurs de conversion de payloads MQTT vides** : Les topics de commande numériques
+  (`yutampo/number/.../set` et `yutampo/climate/.../set`) ignorent désormais les
+  payloads vides ou composés uniquement d'espaces avec un log de niveau debug. Les
+  payloads non numériques sont ignorés avec un warning simple au lieu d'une erreur
+  avec stack trace. Corrige les erreurs "could not convert string to float: ''" qui
+  apparaissaient au démarrage lors de la réception de messages retenus vides (utilisés
+  pour effacer les messages retenus précédents).
+
 ## [2026.10.2] - 2026-10-02
 
 ### Corrigé
