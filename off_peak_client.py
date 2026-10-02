@@ -15,13 +15,13 @@ class OffPeakClient:
     - is_off_peak() retourne True en heures creuses (binary_sensor = on).
     - Fallback conservateur : False (HP) si déconnecté ou erreur.
     - Reconnexion automatique robuste avec backoff exponentiel (max 60s).
-    - Watchdog : si aucun message reçu pendant watchdog_timeout, force reconnexion.
+    - Watchdog : si aucune activité (message ou pong) pendant watchdog_timeout, force reconnexion.
     - Fallback REST : récupère périodiquement l'état via /api/states/<entity>.
     """
 
     MAX_RECONNECT_DELAY = 60  # 60 seconds max (was 300s, now more aggressive)
     INITIAL_RECONNECT_DELAY = 5
-    WATCHDOG_TIMEOUT = 120  # 2 minutes without any message triggers reconnect
+    WATCHDOG_TIMEOUT = 120  # 2 minutes without any activity triggers reconnect
     REST_FALLBACK_INTERVAL = 60  # Check state via REST every 60s when disconnected
 
     def __init__(self, config):
@@ -40,7 +40,8 @@ class OffPeakClient:
         self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
         self._lock = threading.Lock()
         self._reconnect_scheduled = False
-        self._last_message_time = 0
+        self._connecting = False  # Prevents concurrent connection attempts
+        self._last_activity_time = 0  # Updated by messages AND pongs
         self._watchdog_thread = None
         self._rest_fallback_thread = None
         self.mqtt_handler = None
@@ -53,7 +54,7 @@ class OffPeakClient:
             )
             return
         self._shutdown_requested = False
-        self._last_message_time = time.time()
+        self._last_activity_time = time.time()
         self._start_watchdog()
         self._start_rest_fallback()
         self._connect_websocket()
@@ -71,17 +72,17 @@ class OffPeakClient:
                 time.sleep(30)  # Check every 30 seconds
                 if self._shutdown_requested:
                     break
-                elapsed = time.time() - self._last_message_time
+                elapsed = time.time() - self._last_activity_time
                 if self.connected and elapsed > self.WATCHDOG_TIMEOUT:
                     self.logger.warning(
-                        f"OffPeakClient watchdog : aucun message reçu depuis {elapsed:.0f}s, "
+                        f"OffPeakClient watchdog : aucune activité depuis {elapsed:.0f}s, "
                         "forçage de la reconnexion."
                     )
                     self._force_reconnect()
                 elif not self.connected:
                     # If not connected and no reconnect scheduled, schedule one
                     with self._lock:
-                        if not self._reconnect_scheduled and not self._shutdown_requested:
+                        if not self._reconnect_scheduled and not self._connecting and not self._shutdown_requested:
                             self.logger.warning(
                                 "OffPeakClient watchdog : connexion perdue, planification reconnexion."
                             )
@@ -139,7 +140,12 @@ class OffPeakClient:
             )
 
     def _connect_websocket(self):
-        """Établit la connexion WebSocket."""
+        """Établit la connexion WebSocket (thread-safe, prevents concurrent attempts)."""
+        with self._lock:
+            if self._connecting or self._shutdown_requested:
+                return
+            self._connecting = True
+
         try:
             # Clean up previous connection
             if self.ws:
@@ -158,6 +164,8 @@ class OffPeakClient:
                 on_message=self._on_message,
                 on_error=self._on_error,
                 on_close=self._on_close,
+                on_ping=self._on_ping,
+                on_pong=self._on_pong,
                 header={"Authorization": f"Bearer {self.ha_token}"},
             )
             self.ws_thread = threading.Thread(target=self._run_ws_forever, name="OffPeakWS")
@@ -183,6 +191,9 @@ class OffPeakClient:
                 f"OffPeakClient : erreur connexion WebSocket : {str(e)}"
             )
             self._schedule_reconnect()
+        finally:
+            with self._lock:
+                self._connecting = False
 
     def _run_ws_forever(self):
         """Wrapper pour run_forever avec gestion d'erreur."""
@@ -200,15 +211,25 @@ class OffPeakClient:
     def _on_open(self, ws):
         self.connected = True
         self.message_id = 1
-        self._last_message_time = time.time()
+        self._last_activity_time = time.time()
         with self._lock:
             self._reconnect_delay = self.INITIAL_RECONNECT_DELAY  # Reset backoff
             self._reconnect_scheduled = False
         self.logger.info("OffPeakClient : connexion WebSocket ouverte.")
         self._publish_connection_state(True)
 
+    def _on_ping(self, ws, data):
+        """Callback when a ping frame is received from the server."""
+        self._last_activity_time = time.time()
+        self.logger.debug("OffPeakClient : ping reçu du serveur.")
+
+    def _on_pong(self, ws, data):
+        """Callback when a pong frame is received (response to our ping)."""
+        self._last_activity_time = time.time()
+        self.logger.debug("OffPeakClient : pong reçu du serveur.")
+
     def _on_message(self, ws, message):
-        self._last_message_time = time.time()
+        self._last_activity_time = time.time()
         try:
             data = json.loads(message)
             msg_type = data.get("type")
@@ -274,7 +295,11 @@ class OffPeakClient:
         self._schedule_reconnect()
 
     def _force_reconnect(self):
-        """Force la fermeture et reconnexion immédiate."""
+        """Force la fermeture et reconnexion (si pas déjà en cours)."""
+        with self._lock:
+            if self._connecting or self._reconnect_scheduled:
+                self.logger.debug("OffPeakClient : reconnexion déjà en cours, ignoré.")
+                return
         self.logger.info("OffPeakClient : forçage reconnexion...")
         self.connected = False
         self._publish_connection_state(False)
@@ -291,7 +316,7 @@ class OffPeakClient:
             return
 
         with self._lock:
-            if self._reconnect_scheduled:
+            if self._reconnect_scheduled or self._connecting:
                 return
             self._reconnect_scheduled = True
             delay = self._reconnect_delay
@@ -302,6 +327,8 @@ class OffPeakClient:
         def _do_reconnect():
             time.sleep(delay)
             if self._shutdown_requested:
+                with self._lock:
+                    self._reconnect_scheduled = False
                 return
             with self._lock:
                 self._reconnect_scheduled = False
@@ -368,14 +395,18 @@ class OffPeakClient:
         return self.connected
 
     def shutdown(self):
-        """Arrête proprement le client et tous ses threads."""
+        """Arrête proprement le client et tous ses threads daemon."""
         self._shutdown_requested = True
         if self.ws:
             try:
                 self.ws.close()
             except Exception:
                 pass
-        # Wait for threads to finish
+        # Wait for threads to finish (with short timeouts since they're daemon threads)
         if self.ws_thread and self.ws_thread.is_alive():
             self.ws_thread.join(timeout=2.0)
+        if self._watchdog_thread and self._watchdog_thread.is_alive():
+            self._watchdog_thread.join(timeout=1.0)
+        if self._rest_fallback_thread and self._rest_fallback_thread.is_alive():
+            self._rest_fallback_thread.join(timeout=1.0)
         self.logger.info("OffPeakClient arrêté.")

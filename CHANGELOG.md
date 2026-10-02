@@ -2,10 +2,13 @@
 
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 
-Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
-et ce projet adhère au [Versionnage Sémantique](https://semver.org/lang/fr/).
+Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
-## [3.7.8] - 2026-10-02
+**À partir de la version 2026.10.2**, ce projet utilise [CalVer](https://calver.org/) 
+(Calendar Versioning) au format `YYYY.M.D` (année.mois.jour, sans padding de zéros).
+Les versions précédentes utilisaient le versionnage sémantique (3.x.x).
+
+## [2026.10.2] - 2026-10-02
 
 ### Corrigé
 
@@ -27,8 +30,9 @@ et ce projet adhère au [Versionnage Sémantique](https://semver.org/lang/fr/).
 ### Ajouté
 
 - **Watchdog de connexion** : Un thread surveille la connexion WebSocket et force une
-  reconnexion si aucun message n'est reçu pendant 2 minutes (`WATCHDOG_TIMEOUT`), même
-  si la connexion semble active (détection des déconnexions silencieuses).
+  reconnexion si aucune activité (message ou pong) pendant 2 minutes (`WATCHDOG_TIMEOUT`).
+  Utilise les callbacks `on_ping`/`on_pong` de websocket-client pour éviter les faux
+  positifs quand seuls des pings/pongs circulent (pas de state_changed pendant 2 min).
 
 - **Fallback REST** : Quand le WebSocket est déconnecté ou qu'aucun état n'a été reçu,
   le client récupère périodiquement l'état de l'entité HC/HP via l'API REST
@@ -55,9 +59,16 @@ et ce projet adhère au [Versionnage Sémantique](https://semver.org/lang/fr/).
 - **Délai max de reconnexion** : Réduit de 300s (5 min) à 60s pour une reprise plus
   rapide après un redémarrage de HA.
 
+- **Thread safety améliorée** : Flag `_connecting` avec verrou pour éviter les
+  tentatives de connexion WebSocket concurrentes. `shutdown()` attend proprement
+  les threads watchdog et REST en plus du thread WebSocket.
+
 - **Logging amélioré** : Messages de log plus explicites lors des déconnexions,
   reconnexions, et récupérations d'état via REST, incluant la source de la mise à
   jour (`WebSocket` ou `REST`).
+
+- **Migration CalVer** : Passage au versionnage basé sur la date (YYYY.M.D) pour
+  une meilleure traçabilité temporelle des releases.
 
 ## [3.7.7] - 2026-09-28
 

@@ -135,18 +135,18 @@ class TestWatchdog:
             "ha_token": "test_token",
         })
 
-        # Simulate a connected state with no recent messages
+        # Simulate a connected state with no recent activity
         client.connected = True
-        client._last_message_time = time.time() - 200  # 200s ago
+        client._last_activity_time = time.time() - 200  # 200s ago
 
         # Check watchdog logic
-        elapsed = time.time() - client._last_message_time
+        elapsed = time.time() - client._last_activity_time
         assert elapsed > client.WATCHDOG_TIMEOUT
 
         client._shutdown_requested = True
 
-    def test_last_message_time_updated_on_message(self):
-        """Vérifie que _last_message_time est mis à jour à chaque message."""
+    def test_last_activity_time_updated_on_message(self):
+        """Vérifie que _last_activity_time est mis à jour à chaque message."""
         from off_peak_client import OffPeakClient
 
         client = OffPeakClient({
@@ -155,13 +155,50 @@ class TestWatchdog:
         })
 
         old_time = time.time() - 100
-        client._last_message_time = old_time
+        client._last_activity_time = old_time
 
         # Simulate receiving a message
         ws_mock = MagicMock()
-        client._on_message(ws_mock, '{"type": "pong"}')
+        client._on_message(ws_mock, '{"type": "result"}')
 
-        assert client._last_message_time > old_time
+        assert client._last_activity_time > old_time
+
+    def test_last_activity_time_updated_on_pong(self):
+        """Vérifie que _last_activity_time est mis à jour sur réception d'un pong."""
+        from off_peak_client import OffPeakClient
+
+        client = OffPeakClient({
+            "off_peak_entity": "binary_sensor.heures_creuses",
+            "ha_token": "test_token",
+        })
+
+        old_time = time.time() - 100
+        client._last_activity_time = old_time
+
+        # Simulate receiving a pong frame
+        ws_mock = MagicMock()
+        client._on_pong(ws_mock, b"")
+
+        assert client._last_activity_time > old_time
+
+    def test_concurrent_connection_prevented(self):
+        """Vérifie que les connexions concurrentes sont évitées."""
+        from off_peak_client import OffPeakClient
+
+        client = OffPeakClient({
+            "off_peak_entity": "binary_sensor.heures_creuses",
+            "ha_token": "test_token",
+        })
+
+        # Simulate a connection in progress
+        with client._lock:
+            client._connecting = True
+
+        # Try to schedule a reconnect - should be blocked
+        client._schedule_reconnect()
+        assert client._reconnect_scheduled is False
+
+        client._shutdown_requested = True
 
 
 class TestRESTFallback:

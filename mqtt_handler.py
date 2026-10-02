@@ -56,7 +56,7 @@ OFF_PEAK_STATE_PAYLOAD = {
 }
 
 OFF_PEAK_CONNECTED_PAYLOAD = {
-    "name": "Yutampo OffPeak Connecté",
+    "name": "Yutampo OffPeak Connection",
     "unique_id": "yutampo_off_peak_connected",
     "state_topic": "yutampo/binary_sensor/yutampo_off_peak_connected/state",
     "device_class": "connectivity",
