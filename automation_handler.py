@@ -96,13 +96,14 @@ class AutomationHandler:
             self.logger.warning("Aucune consigne forcée définie, rien à appliquer.")
             return
 
-        success = self.api_client.set_heat_setting(
+        applied_temp = self.api_client.set_heat_setting(
             self.physical_device.parent_id,
             run_stop_dhw=1,
             setting_temp_dhw=self.forced_setpoint,
         )
-        if success:
-            self.physical_device.setting_temperature = self.forced_setpoint
+        if applied_temp:
+            # Use the rounded temperature actually applied
+            self.physical_device.setting_temperature = applied_temp
             self.mqtt_handler.publish_state(
                 self.physical_device.id,
                 self.physical_device.setting_temperature,
@@ -408,12 +409,14 @@ class AutomationHandler:
                 self.physical_device.operation_label,
                 source="automation",
             )
-            if self.api_client.set_heat_setting(
+            applied_temp = self.api_client.set_heat_setting(
                 self.physical_device.parent_id,
                 run_stop_dhw=1,
                 setting_temp_dhw=target_temp,
-            ):
-                self.physical_device.setting_temperature = target_temp
+            )
+            if applied_temp:
+                # Use the rounded temperature actually applied
+                self.physical_device.setting_temperature = applied_temp
                 self.mqtt_handler.publish_state(
                     self.physical_device.id,
                     self.physical_device.setting_temperature,
@@ -424,7 +427,7 @@ class AutomationHandler:
                     source="automation",
                 )
                 self.logger.info(
-                    f"Changement de consigne automatique : {target_temp}°C appliqué"
+                    f"Changement de consigne automatique : {applied_temp}°C appliqué"
                 )
             else:
                 self.logger.error("Échec de l'application de la consigne")
@@ -436,11 +439,13 @@ class AutomationHandler:
             )
             self.logger.info(f"Changement de mode par l'utilisateur : heat -> off")
         elif mode == "heat":
-            self.api_client.set_heat_setting(
+            applied_temp = self.api_client.set_heat_setting(
                 self.physical_device.parent_id,
                 run_stop_dhw=1,
                 setting_temp_dhw=self.physical_device.setting_temperature,
             )
+            if applied_temp:
+                self.physical_device.setting_temperature = applied_temp
             self.logger.info(f"Changement de mode par l'utilisateur : off -> heat")
             self.reset_forced_setpoint()  # Forcer la reprise de la régulation
         self.mqtt_handler.publish_state(
